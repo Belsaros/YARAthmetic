@@ -7,12 +7,32 @@
       "description": "Common public Visa test number"
     },
     {
+      "value": "4111111112111111",
+      "valid": false,
+      "description": "Common public Visa test number - interior digit mutated"
+    },
+    {
       "value": "5555555555554444",
       "valid": true,
       "description": "Common public Mastercard test number"
     },
     {
+      "value": "5555555555554445",
+      "valid": false,
+      "description": "Common public Mastercard test number - Check Digit mutated"
+    },
+    {
+      "value": "5555555555545444",
+      "valid": false,
+      "description": "Common public Mastercard test number - Interior transposition"
+    },
+    {
       "value": "1234567890123456",
+      "valid": false,
+      "description": "Correct shape, invalid Luhn checksum"
+    },
+    {
+      "value": "1234567890133456789",
       "valid": false,
       "description": "Correct shape, invalid Luhn checksum"
     },
@@ -87,6 +107,11 @@
         "description": "Diners Club (14-digit card)"
     },
     {
+        "value": "36227206271666",
+        "valid": false,
+        "description": "Diners Club (14-digit card) - Check digit mutated"
+    },
+    {
         "value": "6555900000604105",
         "valid": true,
         "description": "BCcard and DinaCard"
@@ -95,6 +120,11 @@
         "value": "3566002020360505",
         "valid": true,
         "description": "JCB"
+    },
+    {
+        "value": "3566002020630505",
+        "valid": false,
+        "description": "JCB - Interior transposition"
     },
     {
         "value": "6200000000000005",
@@ -110,6 +140,11 @@
         "value": "6205500000000000004",
         "valid": true,
         "description": "UnionPay (19-digit card)"
+    },
+    {
+        "value": "6205500000000000005",
+        "valid": false,
+        "description": "UnionPay (19-digit card) - Check digit mutated"
     }
   ]
 }

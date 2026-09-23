@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+
+set -u
+
+VERSIONS=(
+    3.4.0
+    3.5.0
+    3.6.3
+    3.8.1
+    3.11.0
+    4.0.5
+    4.1.3
+    4.2.3
+)
+
+declare -A RESULTS
+overall=0
+
+for version in "${VERSIONS[@]}"; do
+    echo
+    echo "============================================================"
+    echo " Testing YARA $version"
+    echo "============================================================"
+    echo
+
+    if tools/test-yara-version "$version"; then
+        RESULTS["$version"]="PASS"
+    else
+        RESULTS["$version"]="FAIL"
+        overall=1
+    fi
+done
+
+echo
+echo "YARAthmetic compatibility matrix"
+echo "================================"
+printf "%-12s %s\n" "YARA" "RESULT"
+printf "%-12s %s\n" "------------" "------"
+
+for version in "${VERSIONS[@]}"; do
+    printf "%-12s %s\n" "$version" "${RESULTS[$version]}"
+done
+
+exit "$overall"

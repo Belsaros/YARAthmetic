@@ -7,6 +7,18 @@ rule Valid_Luhn_15
     condition:
         for any i in (1..#compact) : (
             (
+                    @compact[i] == 0 or
+                    uint8(@compact[i] - 1) < 48 or
+                    uint8(@compact[i] - 1) > 57
+                )
+                and
+                (
+                    @compact[i] + !compact[i] >= filesize or
+                    uint8(@compact[i] + !compact[i]) < 48 or
+                    uint8(@compact[i] + !compact[i]) > 57
+                )
+            and
+            (
                 (uint8(@compact[i] + 0) - 48) +
                 (2 * (uint8(@compact[i] + 1) - 48) - 9 * ((uint8(@compact[i] + 1) - 48) \ 5)) +
                 (uint8(@compact[i] + 2) - 48) +
@@ -26,6 +38,18 @@ rule Valid_Luhn_15
         )
         or
         for any i in (1..#formatted) : (
+            (
+                    @formatted[i] == 0 or
+                    uint8(@formatted[i] - 1) < 48 or
+                    uint8(@formatted[i] - 1) > 57
+                )
+                and
+                (
+                    @formatted[i] + !formatted[i] >= filesize or
+                    uint8(@formatted[i] + !formatted[i]) < 48 or
+                    uint8(@formatted[i] + !formatted[i]) > 57
+                )
+            and
             (
                 (uint8(@formatted[i] + 0) - 48) +
                 (2 * (uint8(@formatted[i] + 1) - 48) - 9 * ((uint8(@formatted[i] + 1) - 48) \ 5)) +

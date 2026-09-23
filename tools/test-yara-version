@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+    echo "Usage: $0 <yara-version>" >&2
+    exit 2
+fi
+
+VERSION="$1"
+echo
+echo "=== Testing YARA $VERSION ==="
+echo
+
+docker build \
+    --build-arg YARA_VERSION="$VERSION" \
+    -t "yarithmetic-test:$VERSION" \
+    docker/yara
+
+docker run --rm \
+    -v "$PWD:/work:ro" \
+    -w /work \
+    -e PYTHONPATH=/work/src \
+    "yarithmetic-test:$VERSION" \
+    python -m pytest -v -p no:cacheprovider
