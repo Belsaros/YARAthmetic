@@ -77,3 +77,45 @@ def test_generated_bech32_rule_allows_90_character_candidate(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert "Bech32_Candidate" in result.stdout
+
+def test_generated_bech32_rule_rejects_data_part_shorter_than_checksum(tmp_path):
+    value = "a1" + "q" * 5
+
+    result = run_rule(tmp_path, value)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+def test_generated_bech32_rule_allows_six_character_data_part(tmp_path):
+    value = "a1" + "q" * 6
+
+    result = run_rule(tmp_path, value)
+
+    assert result.returncode == 0, result.stderr
+    assert "Bech32_Candidate" in result.stdout
+
+def test_generated_bech32_rule_allows_lowercase_candidate(tmp_path):
+    result = run_rule(tmp_path, "a1qqqqqq")
+
+    assert result.returncode == 0, result.stderr
+    assert "Bech32_Candidate" in result.stdout
+
+
+def test_generated_bech32_rule_allows_uppercase_candidate(tmp_path):
+    result = run_rule(tmp_path, "A1QQQQQQ")
+
+    assert result.returncode == 0, result.stderr
+    assert "Bech32_Candidate" in result.stdout
+
+
+def test_generated_bech32_rule_rejects_mixed_case_candidate(tmp_path):
+    result = run_rule(tmp_path, "a1QQQQQQ")
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+def test_generated_bech32_rule_rejects_mixed_case_hrp(tmp_path):
+    result = run_rule(tmp_path, "aB1qqqqqq")
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
