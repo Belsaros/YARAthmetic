@@ -51,3 +51,8 @@ def test_generated_luhn_rule_matches_when_any_candidate_is_valid(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert "Valid_Luhn_16" in result.stdout
+
+def test_committed_luhn_rule_is_current():
+    generated_path = ROOT / "generated" / "luhn16.yar"
+
+    assert generated_path.read_text(encoding="utf-8") == generate_luhn16_rule()
