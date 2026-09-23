@@ -1,0 +1,2 @@
+Invalid candidate: 1234567890123456
+Valid candidate: 5555555555554444
