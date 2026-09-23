@@ -1,6 +1,6 @@
 import json
 import pytest
-from yarithmetic.luhn import validate_luhn16
+from yarithmetic.reference.luhn import validate_luhn16
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
