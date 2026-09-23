@@ -11,3 +11,9 @@ license = "MIT"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+markers = [
+    "bech32: Bech32 and Bech32m tests",
+    "luhn: Luhn tests",
+]

@@ -3,6 +3,8 @@ import pytest
 from yarithmetic.reference.luhn import validate_luhn
 from pathlib import Path
 
+pytestmark = pytest.mark.luhn
+
 ROOT = Path(__file__).resolve().parents[1]
 VECTORS = ROOT / "tests" / "vectors" / "luhn.json"
 

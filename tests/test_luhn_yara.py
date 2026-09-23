@@ -6,6 +6,8 @@ import subprocess
 from yarithmetic.generators.luhn import generate_luhn_rule
 from pathlib import Path
 
+pytestmark = pytest.mark.luhn
+
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "tests" / "samples" / "luhn"
 VECTORS = ROOT / "tests" / "vectors" / "luhn.json"
