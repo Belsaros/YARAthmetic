@@ -1,0 +1,115 @@
+{
+  "description": "Test vectors for Luhn validation",
+  "vectors": [
+    {
+      "value": "4111111111111111",
+      "valid": true,
+      "description": "Common public Visa test number"
+    },
+    {
+      "value": "5555555555554444",
+      "valid": true,
+      "description": "Common public Mastercard test number"
+    },
+    {
+      "value": "1234567890123456",
+      "valid": false,
+      "description": "Correct shape, invalid Luhn checksum"
+    },
+    {
+      "value": "4111111111111112",
+      "valid": false,
+      "description": "Single-digit mutation of valid vector"
+    },
+    {
+        "value": "4242424242424242",
+        "valid": true,
+        "description": "Visa"
+    },
+    {
+        "value": "4000056655665556",
+        "valid": true,
+        "description": "Visa (debit)"
+    },
+    {
+        "value": "5555555555554444",
+        "valid": true,
+        "description": "Mastercard"
+    },
+    {
+        "value": "2223003122003222",
+        "valid": true,
+        "description": "Mastercard (2-series)"
+    },
+    {
+        "value": "5200828282828210",
+        "valid": true,
+        "description": "Mastercard (debit)"
+    },
+    {
+        "value": "5105105105105100",
+        "valid": true,
+        "description": "Mastercard (prepaid)"
+    },
+    {
+        "value": "378282246310005",
+        "valid": true,
+        "description": "American Express"
+    },
+    {
+    	"value": "371449635398431",
+        "valid": true,
+        "description": "American Express"
+    },
+    {
+        "value": "6011111111111117",
+        "valid": true,
+        "description": "Discover"
+    },
+    {
+        "value": "6011000990139424",
+        "valid": true,
+        "description": "Discover"
+    },
+    {
+        "value": "6011981111111113",
+        "valid": true,
+        "description": "Discover (debit)"
+    },
+    {
+        "value": "3056930009020004",
+        "valid": true,
+        "description": "Diners Club"
+    },
+    {
+        "value": "36227206271667",
+        "valid": true,
+        "description": "Diners Club (14-digit card)"
+    },
+    {
+        "value": "6555900000604105",
+        "valid": true,
+        "description": "BCcard and DinaCard"
+    },
+    {
+        "value": "3566002020360505",
+        "valid": true,
+        "description": "JCB"
+    },
+    {
+        "value": "6200000000000005",
+        "valid": true,
+        "description": "UnionPay"
+    },
+    {
+        "value": "6200000000000047",
+        "valid": true,
+        "description": "UnionPay (debit)"
+    },
+    {
+        "value": "6205500000000000004",
+        "valid": true,
+        "description": "UnionPay (19-digit card)"
+    }
+  ]
+}

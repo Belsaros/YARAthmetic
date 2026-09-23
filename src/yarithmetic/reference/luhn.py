@@ -1,15 +1,16 @@
-def validate_luhn16(value: str) -> bool:
-    """Return True if value is a valid 16-digit Luhn number."""
+def validate_luhn(value: str) -> bool:
+    """Return True if value passes the Luhn checksum."""
 
-    if len(value) != 16 or not value.isascii() or not value.isdigit():
+    if not value or not value.isascii() or not value.isdigit():
         return False
 
     total = 0
+    parity = len(value) % 2
 
     for index, char in enumerate(value):
         digit = int(char)
 
-        if index % 2 == 0:
+        if index % 2 == parity:
             digit *= 2
             if digit > 9:
                 digit -= 9
