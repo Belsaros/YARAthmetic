@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SAMPLES = ROOT / "tests" / "samples" / "luhn"
 
 import json
+import pytest
 
 VECTORS = ROOT / "tests" / "vectors" / "luhn.json"
 
@@ -99,3 +100,22 @@ def test_generated_luhn_rules_match_vectors(tmp_path):
             f'{value} expected {vector["valid"]}, '
             f"YARA returned {matched}"
         )
+
+@pytest.mark.parametrize(
+    ("sample_name", "length"),
+    [
+        ("formatted.txt", 16),
+        ("formatted-hyphen.txt", 16),
+        ("formatted-mixed.txt", 16),
+        ("formatted-15.txt", 15),
+    ],
+)
+def test_generated_luhn_rule_matches_formatted_sample(tmp_path, sample_name, length):
+    result = run_generated_rule(
+        tmp_path,
+        SAMPLES / sample_name,
+        length=length,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert f"Valid_Luhn_{length}" in result.stdout
