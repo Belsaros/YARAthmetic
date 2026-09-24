@@ -103,6 +103,47 @@ CHARSET_VALUE_ANF = (
     ),
 )
 
+POLYMOD_GENERATORS = (
+    0x3B6A57B2,
+    0x26508E6D,
+    0x1EA119FA,
+    0x3D4233DD,
+    0x2A1462B3,
+)
+
+def generate_polymod_tap(checksum_expression: str) -> str:
+    terms = []
+
+    for bit, generator in enumerate(POLYMOD_GENERATORS):
+        top_bit = f"(({checksum_expression} >> {25 + bit}) & 1)"
+        terms.append(generate_bit_mask(top_bit, generator))
+
+    return "(" + " ^ ".join(terms) + ")"
+
+def generate_polymod_step(
+    checksum_expression: str,
+    value_expression: str,
+) -> str:
+    shifted = (
+        f"((({checksum_expression}) & 0x1ffffff) << 5)"
+    )
+    tap = generate_polymod_tap(checksum_expression)
+
+    return f"({shifted} ^ ({value_expression}) ^ {tap})"
+
+def generate_bit_mask(bit_expression: str, mask: int) -> str:
+    if mask == 0:
+        return "0"
+
+    terms = [
+        f"({bit_expression})" if bit == 0
+        else f"({bit_expression} << {bit})"
+        for bit in range(mask.bit_length())
+        if (mask >> bit) & 1
+    ]
+
+    return "(" + " | ".join(terms) + ")"
+
 def generate_anf_term(byte_expression: str, term: tuple[int, ...]) -> str:
     if not term:
         return "1"

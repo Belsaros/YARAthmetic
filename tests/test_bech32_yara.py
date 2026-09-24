@@ -4,11 +4,15 @@ import pytest
 
 from yarithmetic.generators.bech32 import (
     generate_bech32_rule,
+    generate_bit_mask,
     generate_charset_value,
+    generate_polymod_tap,
+    generate_polymod_step,
 )
 
-pytestmark = pytest.mark.bech32
+from yarithmetic.reference.bech32 import polymod_step as reference_polymod_step
 
+pytestmark = pytest.mark.bech32
 
 def test_generated_bech32_rule_matches_candidate(tmp_path):
     rule_path = tmp_path / "bech32.yar"
@@ -164,3 +168,129 @@ rule Charset_Value
 
     assert result.returncode == 0, result.stderr
     assert "Charset_Value" in result.stdout
+
+def test_generate_bit_mask():
+    assert generate_bit_mask("b", 0b10110) == (
+        "((b << 1) | (b << 2) | (b << 4))"
+    )
+
+def test_generate_bit_mask_with_low_bit():
+    assert generate_bit_mask("b", 0b10101) == (
+        "((b) | (b << 2) | (b << 4))"
+    )
+
+
+def test_generate_bit_mask_with_zero_mask():
+    assert generate_bit_mask("b", 0) == "0"
+
+@pytest.mark.parametrize(
+    ("input_byte", "expected"),
+    [
+        (0, 0),
+        (1, 0b10110),
+    ],
+)
+def test_generated_bit_mask_evaluates_in_yara(tmp_path, input_byte, expected):
+    expression = generate_bit_mask("(uint8(0) & 1)", 0b10110)
+
+    rule = f"""
+rule Bit_Mask
+{{
+    condition:
+        {expression} == {expected}
+}}
+"""
+
+    rule_path = tmp_path / "bit-mask.yar"
+    sample_path = tmp_path / "sample.bin"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(bytes([input_byte]))
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Bit_Mask" in result.stdout
+
+@pytest.mark.parametrize("top", range(32))
+def test_generated_polymod_tap(tmp_path, top):
+    generators = (
+        0x3B6A57B2,
+        0x26508E6D,
+        0x1EA119FA,
+        0x3D4233DD,
+        0x2A1462B3,
+    )
+
+    expected = 0
+
+    for bit, generator in enumerate(generators):
+        if (top >> bit) & 1:
+            expected ^= generator
+
+    checksum = top << 25
+    expression = generate_polymod_tap(str(checksum))
+
+    rule = f"""
+rule Polymod_Tap
+{{
+    condition:
+        {expression} == {expected}
+}}
+"""
+
+    rule_path = tmp_path / "polymod-tap.yar"
+    sample_path = tmp_path / "sample.bin"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(b"X")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_Tap" in result.stdout
+
+@pytest.mark.parametrize(
+    ("checksum", "value"),
+    [
+        (1, 0),
+        (1, 31),
+        (0b10101 << 25, 7),
+        (0x12345678, 17),
+        (0x3fffffff, 31),
+    ],
+)
+def test_generated_polymod_step(tmp_path, checksum, value):
+    expected = reference_polymod_step(checksum, value)
+    expression = generate_polymod_step(str(checksum), str(value))
+
+    rule = f"""
+rule Polymod_Step
+{{
+    condition:
+        {expression} == {expected}
+}}
+"""
+
+    rule_path = tmp_path / "polymod-step.yar"
+    sample_path = tmp_path / "sample.bin"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(b"X")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_Step" in result.stdout
