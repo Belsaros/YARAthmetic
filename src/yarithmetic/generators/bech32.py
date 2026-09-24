@@ -130,6 +130,16 @@ def generate_polymod_check(
 
     return "(" + " and ".join(checks) + ")"
 
+def generate_hrp_low_value(byte_expression: str) -> str:
+    return f"(({byte_expression}) & 31)"
+
+def generate_hrp_high_value(byte_expression: str) -> str:
+    return (
+        f"((({byte_expression}) >> 5) | "
+        f"((((({byte_expression}) + 63) >> 7) ^ "
+        f"((({byte_expression}) + 37) >> 7))))"
+    )
+
 def generate_symbolic_bit_expression(terms, input_expressions):
     if not terms:
         return "0"

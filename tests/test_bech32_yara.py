@@ -6,6 +6,8 @@ from yarithmetic.generators.bech32 import (
     generate_bech32_rule,
     generate_bit_mask,
     generate_charset_value,
+    generate_hrp_high_value,
+    generate_hrp_low_value,
     generate_polymod_check,
     generate_polymod_tap,
     generate_polymod_step,
@@ -455,3 +457,77 @@ rule Polymod_Check
 
     assert result.returncode == 0, result.stderr
     assert "Polymod_Check" not in result.stdout
+
+@pytest.mark.parametrize(
+    ("char", "expected"),
+    [
+        ("A", ord("a") & 31),
+        ("a", ord("a") & 31),
+        ("Z", ord("z") & 31),
+        ("z", ord("z") & 31),
+        ("?", ord("?") & 31),
+        ("1", ord("1") & 31),
+    ],
+)
+def test_generated_hrp_low_value_evaluates_in_yara(
+    tmp_path,
+    char,
+    expected,
+):
+    expression = generate_hrp_low_value("uint8(0)")
+
+    rule = f"""
+rule HRP_Low_Value
+{{
+    condition:
+        {expression} == {expected}
+}}
+"""
+
+    rule_path = tmp_path / "hrp-low.yar"
+    sample_path = tmp_path / "sample.bin"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(char.encode("ascii"))
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "HRP_Low_Value" in result.stdout
+
+@pytest.mark.parametrize("byte", range(33, 127))
+def test_generated_hrp_high_value_evaluates_in_yara(
+    tmp_path,
+    byte,
+):
+    char = chr(byte)
+    expected = ord(char.lower()) >> 5
+
+    expression = generate_hrp_high_value("uint8(0)")
+
+    rule = f"""
+rule HRP_High_Value
+{{
+    condition:
+        {expression} == {expected}
+}}
+"""
+
+    rule_path = tmp_path / "hrp-high.yar"
+    sample_path = tmp_path / "sample.bin"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(bytes([byte]))
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "HRP_High_Value" in result.stdout

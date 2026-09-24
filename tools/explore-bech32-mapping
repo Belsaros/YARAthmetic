@@ -106,51 +106,65 @@ samples = build_samples()
 print(f"{len(samples)} distinct constrained ASCII inputs")
 print()
 
-solutions_by_bit = {}
-for output_bit in range(5):
-    print(f"output bit {output_bit}:")
+def solve_mapping(samples, output_bits):
+    solutions = {}
 
-    for degree in range(1, 8):
-        terms = terms_through_degree(degree)
+    for output_bit in range(output_bits):
+        print(f"output bit {output_bit}:")
 
-        matrix = [
-            [evaluate_term(byte, term) for term in terms]
-            for byte, _ in samples
-        ]
+        for degree in range(1, 8):
+            terms = terms_through_degree(degree)
 
-        rhs = [
-            (value >> output_bit) & 1
-            for _, value in samples
-        ]
+            matrix = [
+                [evaluate_term(byte, term) for term in terms]
+                for byte, _ in samples
+            ]
 
-        solution = solve_gf2(matrix, rhs)
+            rhs = [
+                (value >> output_bit) & 1
+                for _, value in samples
+            ]
 
-        if solution is None:
-            print(f"    degree {degree}: no solution")
-            continue
+            solution = solve_gf2(matrix, rhs)
 
-        selected = [
-            term
-            for term, coefficient in zip(terms, solution)
-            if coefficient
-        ]
+            if solution is None:
+                print(f"    degree {degree}: no solution")
+                continue
 
-        solutions_by_bit[output_bit] = selected
+            selected = [
+                term
+                for term, coefficient in zip(terms, solution)
+                if coefficient
+            ]
 
-        print(
-            f"    degree {degree}: SOLUTION "
-            f"({len(selected)} terms)"
-        )
-        print(
-            "        "
-            + " XOR ".join(describe_term(term) for term in selected)
-        )
-        break
+            solutions[output_bit] = selected
 
-    else:
-        print("    no solution through degree 7")
+            print(
+                f"    degree {degree}: SOLUTION "
+                f"({len(selected)} terms)"
+            )
+            print(
+                "        "
+                + " XOR ".join(
+                    describe_term(term)
+                    for term in selected
+                )
+            )
+            break
 
-    print()
+        else:
+            print("    no solution through degree 7")
+
+        print()
+
+    return solutions
+
+samples = build_samples()
+
+print(f"{len(samples)} distinct constrained ASCII inputs")
+print()
+
+solutions_by_bit = solve_mapping(samples, 5)
 
 def evaluate_anf(byte, terms):
     result = 0
@@ -211,3 +225,53 @@ for byte in range(128):
             f"    {byte:3} {byte:07b} "
             f"{chr(byte)!r:4} -> {actual:2}"
         )
+
+hrp_samples = [
+    (byte, ord(chr(byte).lower()) >> 5)
+    for byte in range(33, 127)
+]
+
+print()
+print("HRP high-bit mapping")
+print("====================")
+print()
+print(f"{len(hrp_samples)} distinct constrained ASCII inputs")
+print()
+
+hrp_solutions = solve_mapping(hrp_samples, 2)
+
+print("verification:")
+print()
+
+failures = 0
+
+for byte, expected in hrp_samples:
+    actual = 0
+
+    for output_bit in range(2):
+        bit = evaluate_anf(
+            byte,
+            hrp_solutions[output_bit],
+        )
+        actual |= bit << output_bit
+
+    status = "OK" if actual == expected else "FAIL"
+
+    print(
+        f"    {chr(byte)!r:3} {byte:3} -> "
+        f"{actual} expected {expected} {status}"
+    )
+
+    if actual != expected:
+        failures += 1
+
+print()
+
+if failures:
+    print(f"FAILED: {failures} incorrect HRP mappings")
+    raise SystemExit(1)
+
+print(
+    f"PASS: all {len(hrp_samples)} "
+    "HRP inputs mapped correctly"
+    )
