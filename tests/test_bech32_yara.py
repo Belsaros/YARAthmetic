@@ -5,17 +5,25 @@ import pytest
 from yarithmetic.generators.bech32 import (
     generate_bech32_rule,
     generate_bit_mask,
+    generate_charset_bit,
     generate_charset_value,
     generate_hrp_high_value,
     generate_hrp_low_value,
     generate_polymod_check,
+    generate_polymod_check_column_major,
+    generate_polymod_check_from_bits,
+    generate_polymod_inputs,
+    generate_polymod_input_bits,
     generate_polymod_tap,
     generate_polymod_step,
     generate_symbolic_bit_expression,
     generate_symbolic_polymod,
+    transpose_symbolic_polymod,
 )
 
 from yarithmetic.reference.bech32 import (
+        BECH32_CONSTANT,
+        BECH32M_CONSTANT,
         polymod_step as reference_polymod_step,
         polymod as reference_polymod,
 )
@@ -531,3 +539,458 @@ rule HRP_High_Value
 
     assert result.returncode == 0, result.stderr
     assert "HRP_High_Value" in result.stdout
+
+def test_generate_polymod_inputs_for_known_shape():
+    inputs = generate_polymod_inputs(
+        "base",
+        hrp_length=2,
+        candidate_length=10,
+    )
+
+    byte0 = "uint8((base) + 0)"
+    byte1 = "uint8((base) + 1)"
+
+    assert inputs == [
+        generate_hrp_high_value(byte0),
+        generate_hrp_high_value(byte1),
+        "0",
+        generate_hrp_low_value(byte0),
+        generate_hrp_low_value(byte1),
+        generate_charset_value("uint8((base) + 3)"),
+        generate_charset_value("uint8((base) + 4)"),
+        generate_charset_value("uint8((base) + 5)"),
+        generate_charset_value("uint8((base) + 6)"),
+        generate_charset_value("uint8((base) + 7)"),
+        generate_charset_value("uint8((base) + 8)"),
+        generate_charset_value("uint8((base) + 9)"),
+    ]
+
+def test_generated_polymod_check_validates_real_bech32_bytes(tmp_path):
+    value = "A12UEL5L"
+
+    inputs = generate_polymod_inputs(
+        "0",
+        hrp_length=1,
+        candidate_length=len(value),
+    )
+
+    condition = generate_polymod_check(
+        inputs,
+        BECH32_CONSTANT,
+    )
+
+    rule = f"""
+rule Bech32_Checksum
+{{
+    condition:
+        filesize == {len(value)} and
+        {condition}
+}}
+"""
+
+    rule_path = tmp_path / "bech32.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_text(value, encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Bech32_Checksum" in result.stdout
+
+def test_generated_polymod_check_rejects_corrupt_bech32_bytes(tmp_path):
+    value = "A12UEL5M"
+
+    inputs = generate_polymod_inputs(
+        "0",
+        hrp_length=1,
+        candidate_length=len(value),
+    )
+
+    condition = generate_polymod_check(
+        inputs,
+        BECH32_CONSTANT,
+    )
+
+    rule = f"""
+rule Bech32_Checksum
+{{
+    condition:
+        filesize == {len(value)} and
+        {condition}
+}}
+"""
+
+    rule_path = tmp_path / "bech32.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_text(value, encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+def test_generated_polymod_check_validates_real_bech32m_bytes(tmp_path):
+    value = "A1LQFN3A"
+
+    inputs = generate_polymod_inputs(
+        "0",
+        hrp_length=1,
+        candidate_length=len(value),
+    )
+
+    condition = generate_polymod_check(
+        inputs,
+        BECH32M_CONSTANT,
+    )
+
+    rule = f"""
+rule Bech32m_Checksum
+{{
+    condition:
+        filesize == {len(value)} and
+        {condition}
+}}
+"""
+
+    rule_path = tmp_path / "bech32m.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_text(value, encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Bech32m_Checksum" in result.stdout
+
+def test_transpose_symbolic_polymod():
+    state = generate_symbolic_polymod(1)
+
+    constant_mask, input_masks = transpose_symbolic_polymod(state)
+
+    assert constant_mask == 32
+
+    for input_bit in range(5):
+        values = [1 << input_bit]
+
+        expected_delta = (
+            reference_polymod(values)
+            ^ reference_polymod([0])
+        )
+
+        assert input_masks[("input", 0, input_bit)] == expected_delta
+
+def test_transpose_symbolic_polymod_maximum_length():
+    values = [
+        (position * 17 + 3) & 31
+        for position in range(173)
+    ]
+
+    state = generate_symbolic_polymod(len(values))
+    constant_mask, input_masks = transpose_symbolic_polymod(state)
+
+    result = constant_mask
+
+    for position, value in enumerate(values):
+        for bit in range(5):
+            if (value >> bit) & 1:
+                result ^= input_masks.get(
+                    ("input", position, bit),
+                    0,
+                )
+
+    assert result == reference_polymod(values)
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [0],
+        [31],
+        [0, 1, 2, 3],
+        [3, 3, 3, 0, 1, 2, 3],
+    ],
+)
+def test_generated_column_major_polymod_check_evaluates_in_yara(
+    tmp_path,
+    values,
+):
+    input_expressions = [str(value) for value in values]
+    expected = reference_polymod(values)
+
+    condition = generate_polymod_check_column_major(
+        input_expressions,
+        expected,
+    )
+
+    rule = f"""
+rule Polymod_Column_Major
+{{
+    condition:
+        {condition}
+}}
+"""
+
+    rule_path = tmp_path / "polymod-column-major.yar"
+    sample_path = tmp_path / "sample"
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(b"")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_Column_Major" in result.stdout
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [0],
+        [31],
+        [0, 1, 2, 3],
+        [3, 3, 3, 0, 1, 2, 3],
+    ],
+)
+def test_generated_column_major_polymod_check_rejects_wrong_constant(
+    tmp_path,
+    values,
+):
+    input_expressions = [str(value) for value in values]
+    wrong_constant = reference_polymod(values) ^ 1
+
+    condition = generate_polymod_check_column_major(
+        input_expressions,
+        wrong_constant,
+    )
+
+    rule = f"""
+rule Polymod_Column_Major
+{{
+    condition:
+        {condition}
+}}
+"""
+
+    rule_path = tmp_path / "polymod-column-major.yar"
+    sample_path = tmp_path / "sample"
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(b"")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+@pytest.mark.parametrize("bit", range(5))
+def test_generated_charset_bit_evaluates_in_yara(
+    tmp_path,
+    bit,
+):
+    for char in CHARSET:
+        expected = (CHARSET.index(char) >> bit) & 1
+
+        for representation in {char.lower(), char.upper()}:
+            expression = generate_charset_bit(
+                str(ord(representation)),
+                bit,
+            )
+
+            rule = f"""
+rule Charset_Bit
+{{
+    condition:
+        {expression} == {expected}
+}}
+"""
+
+            rule_path = tmp_path / "charset-bit.yar"
+            sample_path = tmp_path / "sample"
+
+            rule_path.write_text(rule, encoding="utf-8")
+            sample_path.write_bytes(b"")
+
+            result = subprocess.run(
+                ["yara", str(rule_path), str(sample_path)],
+                capture_output=True,
+                text=True,
+            )
+
+            assert result.returncode == 0, (
+                representation,
+                bit,
+                result.stderr,
+            )
+            assert "Charset_Bit" in result.stdout, (
+                representation,
+                bit,
+                expression,
+            )
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [0],
+        [31],
+        [0, 1, 2, 3],
+        [3, 3, 3, 0, 1, 2, 3],
+    ],
+)
+def test_generated_polymod_check_from_bits_evaluates_in_yara(
+    tmp_path,
+    values,
+):
+    input_bits = [
+        [
+            str((value >> bit) & 1)
+            for bit in range(5)
+        ]
+        for value in values
+    ]
+
+    expected = reference_polymod(values)
+
+    condition = generate_polymod_check_from_bits(
+        input_bits,
+        expected,
+    )
+
+    rule = f"""
+rule Polymod_From_Bits
+{{
+    condition:
+        {condition}
+}}
+"""
+
+    rule_path = tmp_path / "polymod-from-bits.yar"
+    sample_path = tmp_path / "sample"
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(b"")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_From_Bits" in result.stdout
+
+@pytest.mark.parametrize(
+    "bits",
+    [
+        [],
+        ["0"],
+        ["0", "0", "0", "0"],
+        ["0", "0", "0", "0", "0", "0"],
+    ],
+)
+def test_generate_polymod_check_from_bits_rejects_invalid_width(bits):
+    with pytest.raises(
+        ValueError,
+        match="exactly 5 bits",
+    ):
+        generate_polymod_check_from_bits(
+            [bits],
+            1,
+        )
+
+def test_generate_polymod_input_bits_shape():
+    input_bits = generate_polymod_input_bits(
+        "@candidate[i]",
+        2,
+        10,
+    )
+
+    # N = L + H
+    assert len(input_bits) == 12
+
+    # Every polymod symbol is five bits.
+    assert all(len(bits) == 5 for bits in input_bits)
+
+    # HRP expansion separator is zero.
+    assert input_bits[2] == ["0"] * 5
+
+def test_generate_polymod_input_bits_matches_integer_inputs_in_yara(
+    tmp_path,
+):
+    candidate = b"A12UEL5L"
+    hrp_length = 1
+    candidate_length = len(candidate)
+
+    old_inputs = generate_polymod_inputs(
+        "@candidate[1]",
+        hrp_length,
+        candidate_length,
+    )
+    new_bits = generate_polymod_input_bits(
+        "@candidate[1]",
+        hrp_length,
+        candidate_length,
+    )
+
+    assert len(old_inputs) == len(new_bits)
+
+    comparisons = []
+
+    for old_expression, bits in zip(old_inputs, new_bits):
+        reconstructed = " | ".join(
+            f"(({bit_expression}) << {bit})"
+            for bit, bit_expression in enumerate(bits)
+        )
+
+        comparisons.append(
+            f"(({old_expression}) == ({reconstructed}))"
+        )
+
+    condition = " and\n        ".join(comparisons)
+
+    rule = f"""
+rule Polymod_Input_Bits_Equivalent
+{{
+    strings:
+        $candidate = "A12UEL5L" ascii
+
+    condition:
+        for any i in (1..#candidate) : (
+            {condition}
+        )
+}}
+"""
+
+    rule_path = tmp_path / "polymod-input-bits-equivalent.yar"
+    sample_path = tmp_path / "sample"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(candidate)
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_Input_Bits_Equivalent" in result.stdout

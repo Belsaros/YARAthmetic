@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+
+import sys
+
+from yarithmetic.generators.bech32 import (
+        generate_polymod_check,
+        generate_polymod_check_column_major,
+        generate_polymod_check_from_bits,
+        generate_polymod_inputs,
+        generate_polymod_input_bits,
+)
+
+shape_count = 0
+total_symbols = 0
+max_symbols = 0
+total_yara_bytes = 0
+
+size_cache = {}
+
+def generate_shape_condition(
+    candidate_length,
+    hrp_length,
+):
+    input_bits = generate_polymod_input_bits(
+        "@candidate[i]",
+        hrp_length,
+        candidate_length,
+    )
+
+    checksum = generate_polymod_check_from_bits(
+        input_bits,
+        1,
+    )
+    separator_offset = hrp_length
+
+    return f"""(
+        !candidate[i] == {candidate_length}
+        and uint8(@candidate[i] + {separator_offset}) == 49
+        and {checksum}
+    )"""
+
+
+if len(sys.argv) > 1:
+    limit = int(sys.argv[1])
+
+    conditions = []
+
+    for candidate_length in range(8, 91):
+        for hrp_length in range(1, candidate_length - 6):
+            conditions.append(
+                generate_shape_condition(
+                    candidate_length,
+                    hrp_length,
+                )
+            )
+
+            if len(conditions) == limit:
+                break
+
+        if len(conditions) == limit:
+            break
+
+    rule = f"""rule Bech32_Monster
+{{
+    strings:
+        $candidate = /[!-~]+1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{{6,}}/ nocase
+
+    condition:
+        for any i in (1..#candidate) : (
+            {" or ".join(conditions)}
+        )
+}}
+"""
+
+    print(rule)
+    sys.exit(0)
+
+for candidate_length in range(8, 91):
+    for hrp_length in range(1, candidate_length - 6):
+        data_length = candidate_length - hrp_length - 1
+
+        if data_length < 6:
+            continue
+
+        symbol_count = candidate_length + hrp_length
+
+        shape_count += 1
+        total_symbols += symbol_count
+        max_symbols = max(max_symbols, symbol_count)
+
+        if symbol_count not in size_cache:
+            inputs = [
+                f"v{index}"
+                for index in range(symbol_count)
+            ]
+            expression = generate_polymod_check(inputs, 1)
+            size_cache[symbol_count] = len(expression)
+
+        total_yara_bytes += size_cache[symbol_count]
+
+print(f"shapes:        {shape_count}")
+print(f"total symbols: {total_symbols}")
+print(f"max symbols:   {max_symbols}")
+print(f"average:       {total_symbols / shape_count:.1f}")
+print(f"YARA bytes:    {total_yara_bytes:,}")
+print(f"YARA MiB:      {total_yara_bytes / 1024 / 1024:.1f}")

@@ -111,6 +111,165 @@ POLYMOD_GENERATORS = (
     0x2A1462B3,
 )
 
+def generate_polymod_input_bits(
+    candidate_offset,
+    hrp_length,
+    candidate_length,
+):
+    input_bits = []
+
+    # HRP high bits.
+    for offset in range(hrp_length):
+        byte_expression = (
+            f"uint8(({candidate_offset}) + {offset})"
+        )
+        value_expression = generate_hrp_high_value(
+            byte_expression
+        )
+        input_bits.append([
+            f"(({value_expression} >> {bit}) & 1)"
+            for bit in range(5)
+        ])
+
+    # HRP expansion separator.
+    input_bits.append(["0"] * 5)
+
+    # HRP low bits.
+    for offset in range(hrp_length):
+        byte_expression = (
+            f"uint8(({candidate_offset}) + {offset})"
+        )
+        value_expression = generate_hrp_low_value(
+            byte_expression
+        )
+        input_bits.append([
+            f"(({value_expression} >> {bit}) & 1)"
+            for bit in range(5)
+        ])
+
+    # Data + checksum characters.
+    for offset in range(hrp_length + 1, candidate_length):
+        byte_expression = (
+            f"uint8(({candidate_offset}) + {offset})"
+        )
+        input_bits.append([
+            generate_charset_bit(byte_expression, bit)
+            for bit in range(5)
+        ])
+
+    return input_bits
+
+def generate_polymod_check_from_bits(
+    input_bits,
+    constant: int,
+) -> str:
+    state = generate_symbolic_polymod(len(input_bits))
+    constant_mask, input_masks = transpose_symbolic_polymod(state)
+
+    terms = []
+    for bits in input_bits:
+        if len(bits) != 5:
+            raise ValueError(
+                "each polymod input must contain exactly 5 bits"
+            )
+
+    if constant_mask:
+        terms.append(hex(constant_mask))
+
+    for term, mask in sorted(input_masks.items()):
+        _, position, bit = term
+        bit_expression = input_bits[position][bit]
+
+        terms.append(
+            f"(({bit_expression}) * {hex(mask)})"
+        )
+
+    if not terms:
+        expression = "0"
+    else:
+        expression = " ^ ".join(terms)
+
+    return f"(({expression}) == {hex(constant)})"
+
+def _build_charset_bit_masks():
+    masks = [0] * 5
+
+    for value, char in enumerate(CHARSET):
+        for representation in {char.lower(), char.upper()}:
+            index = (
+                (ord(representation) & 31)
+                | ((ord(representation) >> 1) & 32)
+            )
+
+            for bit in range(5):
+                if (value >> bit) & 1:
+                    masks[bit] |= 1 << index
+
+    return tuple(masks)
+
+
+CHARSET_BIT_MASKS = _build_charset_bit_masks()
+
+def generate_charset_bit(
+    byte_expression: str,
+    bit: int,
+) -> str:
+    if bit < 0 or bit > 4:
+        raise ValueError("charset bit must be between 0 and 4")
+
+    index = (
+        f"((({byte_expression}) & 31) | "
+        f"((({byte_expression}) >> 1) & 32))"
+    )
+
+    mask = CHARSET_BIT_MASKS[bit]
+
+    return f"(({hex(mask)} >> {index}) & 1)"
+
+def generate_polymod_check_column_major(
+    input_expressions,
+    constant: int,
+) -> str:
+    state = generate_symbolic_polymod(len(input_expressions))
+    constant_mask, input_masks = transpose_symbolic_polymod(state)
+
+    terms = []
+
+    if constant_mask:
+        terms.append(hex(constant_mask))
+
+    for term, mask in sorted(input_masks.items()):
+        _, position, bit = term
+        input_expression = input_expressions[position]
+        input_bit = f"(({input_expression} >> {bit}) & 1)"
+
+        terms.append(
+            f"({input_bit} * {hex(mask)})"
+        )
+
+    if not terms:
+        expression = "0"
+    else:
+        expression = " ^ ".join(terms)
+
+    return f"(({expression}) == {hex(constant)})"
+
+def transpose_symbolic_polymod(state):
+    constant_mask = 0
+    input_masks = {}
+
+    for output_bit, terms in enumerate(state):
+        for term in terms:
+            if term == ("constant",):
+                constant_mask |= 1 << output_bit
+            else:
+                input_masks[term] = (
+                    input_masks.get(term, 0)
+                    | (1 << output_bit)
+                )
+
+    return constant_mask, input_masks
+
 def generate_polymod_check(
     input_expressions,
     constant: int,
@@ -139,6 +298,29 @@ def generate_hrp_high_value(byte_expression: str) -> str:
         f"((((({byte_expression}) + 63) >> 7) ^ "
         f"((({byte_expression}) + 37) >> 7))))"
     )
+
+def generate_polymod_inputs(
+    candidate_offset: str,
+    hrp_length: int,
+    candidate_length: int,
+):
+    inputs = []
+
+    for offset in range(hrp_length):
+        byte_expression = f"uint8(({candidate_offset}) + {offset})"
+        inputs.append(generate_hrp_high_value(byte_expression))
+
+    inputs.append("0")
+
+    for offset in range(hrp_length):
+        byte_expression = f"uint8(({candidate_offset}) + {offset})"
+        inputs.append(generate_hrp_low_value(byte_expression))
+
+    for offset in range(hrp_length + 1, candidate_length):
+        byte_expression = f"uint8(({candidate_offset}) + {offset})"
+        inputs.append(generate_charset_value(byte_expression))
+
+    return inputs
 
 def generate_symbolic_bit_expression(terms, input_expressions):
     if not terms:
