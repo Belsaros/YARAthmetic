@@ -6,11 +6,17 @@ from yarithmetic.generators.bech32 import (
     generate_bech32_rule,
     generate_bit_mask,
     generate_charset_value,
+    generate_polymod_check,
     generate_polymod_tap,
     generate_polymod_step,
+    generate_symbolic_bit_expression,
+    generate_symbolic_polymod,
 )
 
-from yarithmetic.reference.bech32 import polymod_step as reference_polymod_step
+from yarithmetic.reference.bech32 import (
+        polymod_step as reference_polymod_step,
+        polymod as reference_polymod,
+)
 
 pytestmark = pytest.mark.bech32
 
@@ -294,3 +300,158 @@ rule Polymod_Step
 
     assert result.returncode == 0, result.stderr
     assert "Polymod_Step" in result.stdout
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [0],
+        [31],
+        [0, 1, 2, 3],
+        [3, 3, 3, 0, 1, 2, 3],
+        [31] * 20,
+        [31] * 173,
+    ],
+)
+def test_symbolic_polymod_matches_reference(values):
+    state = generate_symbolic_polymod(len(values))
+
+    result = 0
+
+    for output_bit, terms in enumerate(state):
+        bit = 0
+
+        for term in terms:
+            if term == ("constant",):
+                bit ^= 1
+            else:
+                _, position, input_bit = term
+                bit ^= (values[position] >> input_bit) & 1
+
+        result |= bit << output_bit
+
+    assert result == reference_polymod(values)
+
+def test_generate_symbolic_bit_expression():
+    terms = frozenset({
+        ("input", 0, 2),
+        ("input", 1, 4),
+    })
+
+    expression = generate_symbolic_bit_expression(
+        terms,
+        ["first", "second"],
+    )
+
+    assert expression == (
+        "(((first >> 2) & 1) ^ ((second >> 4) & 1))"
+    )
+
+
+def test_generate_symbolic_bit_expression_with_constant():
+    terms = frozenset({
+        ("constant",),
+        ("input", 0, 3),
+    })
+
+    expression = generate_symbolic_bit_expression(
+        terms,
+        ["value"],
+    )
+
+    assert expression == "(1 ^ ((value >> 3) & 1))"
+
+
+def test_generate_symbolic_bit_expression_zero():
+    expression = generate_symbolic_bit_expression(
+        frozenset(),
+        [],
+    )
+
+    assert expression == "0"
+
+@pytest.mark.parametrize(
+    ("values", "constant"),
+    [
+        ([0], 32),
+        ([31], reference_polymod([31])),
+        ([0, 1, 2, 3], reference_polymod([0, 1, 2, 3])),
+        ([3, 3, 3, 0, 1, 2, 3], reference_polymod([3, 3, 3, 0, 1, 2, 3])),
+    ],
+)
+def test_generated_polymod_check_evaluates_in_yara(
+    tmp_path,
+    values,
+    constant,
+):
+    input_expressions = [str(value) for value in values]
+    expression = generate_polymod_check(
+        input_expressions,
+        constant,
+    )
+
+    rule = f"""
+rule Polymod_Check
+{{
+    condition:
+        {expression}
+}}
+"""
+
+    rule_path = tmp_path / "polymod-check.yar"
+    sample_path = tmp_path / "sample.bin"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(b"X")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_Check" in result.stdout
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [0],
+        [31],
+        [0, 1, 2, 3],
+        [3, 3, 3, 0, 1, 2, 3],
+    ],
+)
+def test_generated_polymod_check_rejects_wrong_constant(
+    tmp_path,
+    values,
+):
+    input_expressions = [str(value) for value in values]
+    wrong_constant = reference_polymod(values) ^ 1
+
+    expression = generate_polymod_check(
+        input_expressions,
+        wrong_constant,
+    )
+
+    rule = f"""
+rule Polymod_Check
+{{
+    condition:
+        {expression}
+}}
+"""
+
+    rule_path = tmp_path / "polymod-check.yar"
+    sample_path = tmp_path / "sample.bin"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_bytes(b"X")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_Check" not in result.stdout

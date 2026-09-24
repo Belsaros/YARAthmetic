@@ -111,6 +111,75 @@ POLYMOD_GENERATORS = (
     0x2A1462B3,
 )
 
+def generate_polymod_check(
+    input_expressions,
+    constant: int,
+) -> str:
+    state = generate_symbolic_polymod(len(input_expressions))
+
+    checks = []
+
+    for output_bit, terms in enumerate(state):
+        expression = generate_symbolic_bit_expression(
+            terms,
+            input_expressions,
+        )
+        expected = (constant >> output_bit) & 1
+
+        checks.append(f"({expression} == {expected})")
+
+    return "(" + " and ".join(checks) + ")"
+
+def generate_symbolic_bit_expression(terms, input_expressions):
+    if not terms:
+        return "0"
+
+    expressions = []
+
+    if ("constant",) in terms:
+        expressions.append("1")
+
+    input_terms = sorted(
+        term for term in terms
+        if term[0] == "input"
+    )
+
+    for _, position, bit in input_terms:
+        expression = input_expressions[position]
+        expressions.append(
+            f"(({expression} >> {bit}) & 1)"
+        )
+
+    return "(" + " ^ ".join(expressions) + ")"
+
+def generate_symbolic_polymod(symbol_count: int):
+    state = [set() for _ in range(30)]
+    state[0].add(("constant",))
+
+    for position in range(symbol_count):
+        top = state[25:30]
+        new_state = [set() for _ in range(30)]
+
+        # ((checksum & 0x1ffffff) << 5)
+        for bit in range(25):
+            new_state[bit + 5].symmetric_difference_update(state[bit])
+
+        # ^ value
+        for bit in range(5):
+            new_state[bit].add(("input", position, bit))
+
+        # ^ generator taps
+        for top_bit, generator in enumerate(POLYMOD_GENERATORS):
+            for output_bit in range(30):
+                if (generator >> output_bit) & 1:
+                    new_state[output_bit].symmetric_difference_update(
+                        top[top_bit]
+                    )
+
+        state = new_state
+
+    return tuple(frozenset(terms) for terms in state)
+
 def generate_polymod_tap(checksum_expression: str) -> str:
     terms = []
 
