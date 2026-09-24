@@ -2,8 +2,10 @@ import subprocess
 
 import pytest
 
-from yarithmetic.generators.bech32 import generate_bech32_rule
-
+from yarithmetic.generators.bech32 import (
+    generate_bech32_rule,
+    generate_charset_value,
+)
 
 pytestmark = pytest.mark.bech32
 
@@ -119,3 +121,46 @@ def test_generated_bech32_rule_rejects_mixed_case_hrp(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+def test_generated_bech32_rule_allows_one_in_hrp(tmp_path):
+    result = run_rule(tmp_path, "foo1bar1qqqqqq")
+
+    assert result.returncode == 0, result.stderr
+    assert "Bech32_Candidate" in result.stdout
+
+CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+
+@pytest.mark.parametrize(
+    ("char", "expected"),
+    [
+        (representation, value)
+        for value, char in enumerate(CHARSET)
+        for representation in {char, char.upper()}
+    ],
+)
+def test_generated_charset_value_maps_all_characters(tmp_path, char, expected):
+    expression = generate_charset_value("uint8(0)")
+
+    rule = f"""
+rule Charset_Value
+{{
+    condition:
+        {expression} == {expected}
+}}
+"""
+
+    rule_path = tmp_path / "charset.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(rule, encoding="utf-8")
+    sample_path.write_text(char, encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Charset_Value" in result.stdout
