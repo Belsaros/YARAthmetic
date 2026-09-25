@@ -1,5 +1,7 @@
 CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 
+from yarithmetic.reference.bech32 import BECH32_CONSTANT
+
 CHARSET_VALUE_ANF = (
     # Output bit 0
     (
@@ -110,6 +112,27 @@ POLYMOD_GENERATORS = (
     0x3D4233DD,
     0x2A1462B3,
 )
+
+def generate_shape_condition(
+    candidate_length,
+    hrp_length,
+):
+    input_bits = generate_polymod_input_bits(
+        "@candidate[i]",
+        hrp_length,
+        candidate_length,
+    )
+
+    checksum = generate_polymod_check_from_bits(
+        input_bits,
+        BECH32_CONSTANT,
+    )
+
+    return f"""(
+        !candidate[i] == {candidate_length}
+        and uint8(@candidate[i] + {hrp_length}) == 49
+        and {checksum}
+    )"""
 
 def generate_polymod_input_bits(
     candidate_offset,
@@ -435,12 +458,36 @@ def generate_charset_value(byte_expression: str) -> str:
 
     return "(" + " | ".join(bits) + ")"
 
-def generate_bech32_rule() -> str:
-    return r"""
+def generate_bech32_rule(
+    shapes=None,
+) -> str:
+    if shapes is None:
+        shapes = [
+            (candidate_length, hrp_length)
+            for candidate_length in range(8, 91)
+            for hrp_length in range(
+                1,
+                candidate_length - 6,
+            )
+        ]
+
+    shape_conditions = [
+        generate_shape_condition(
+            candidate_length,
+            hrp_length,
+        )
+        for candidate_length, hrp_length in shapes
+    ]
+
+    checksum_condition = "\n            or\n            ".join(
+        shape_conditions
+    )
+
+    return f"""
 rule Bech32_Candidate
-{
+{{
     strings:
-        $candidate = /[!-~]+1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{6,}/ nocase
+        $candidate = /[!-~]+1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{{6,}}/ nocase
 
     condition:
         for any i in (1..#candidate) : (
@@ -456,13 +503,17 @@ rule Bech32_Candidate
                 for all j in (0..!candidate[i] - 1) : (
                     uint8(@candidate[i] + j) < 97 or
                     uint8(@candidate[i] + j) > 122
-            )
-            or
-            for all j in (0..!candidate[i] - 1) : (
-                uint8(@candidate[i] + j) < 65 or
-                uint8(@candidate[i] + j) > 90
+                )
+                or
+                for all j in (0..!candidate[i] - 1) : (
+                    uint8(@candidate[i] + j) < 65 or
+                    uint8(@candidate[i] + j) > 90
                 )
             )
+            and
+            (
+                {checksum_condition}
+            )
         )
-}
+}}
 """

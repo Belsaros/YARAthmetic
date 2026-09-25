@@ -30,11 +30,44 @@ from yarithmetic.reference.bech32 import (
 
 pytestmark = pytest.mark.bech32
 
+def run_rule(
+    tmp_path,
+    value,
+    *,
+    shapes,
+):
+    rule_path = tmp_path / "bech32.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        generate_bech32_rule(
+            shapes=shapes,
+        ),
+        encoding="utf-8",
+    )
+
+    sample_path.write_text(
+        value,
+        encoding="ascii",
+    )
+
+    return subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
 def test_generated_bech32_rule_matches_candidate(tmp_path):
     rule_path = tmp_path / "bech32.yar"
     sample_path = tmp_path / "sample.txt"
 
-    rule_path.write_text(generate_bech32_rule(), encoding="utf-8")
+    rule_path.write_text(
+        generate_bech32_rule(
+            shapes=[(45, 6)],
+        ),
+        encoding="utf-8",
+    )
+
     sample_path.write_text(
         "abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw",
         encoding="ascii",
@@ -53,7 +86,13 @@ def test_generated_bech32_rule_rejects_non_candidate(tmp_path):
     rule_path = tmp_path / "bech32.yar"
     sample_path = tmp_path / "sample.txt"
 
-    rule_path.write_text(generate_bech32_rule(), encoding="utf-8")
+    rule_path.write_text(
+        generate_bech32_rule(
+            shapes=[(8, 1)],
+        ),
+        encoding="utf-8",
+    )
+
     sample_path.write_text(
         "There is absolutely no encoded data in this file.",
         encoding="ascii",
@@ -68,34 +107,18 @@ def test_generated_bech32_rule_rejects_non_candidate(tmp_path):
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
 
-def run_rule(tmp_path, value):
-    rule_path = tmp_path / "bech32.yar"
-    sample_path = tmp_path / "sample.txt"
-
-    rule_path.write_text(generate_bech32_rule(), encoding="utf-8")
-    sample_path.write_text(value, encoding="ascii")
-
-    return subprocess.run(
-        ["yara", str(rule_path), str(sample_path)],
-        capture_output=True,
-        text=True,
-    )
-
-def test_generated_bech32_rule_rejects_candidate_over_90_characters(tmp_path):
-    value = "a" * 83 + "1" + "q" * 7
-    assert len(value) == 91
-
-    result = run_rule(tmp_path, value)
-
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == ""
-
-
 def test_generated_bech32_rule_allows_90_character_candidate(tmp_path):
-    value = "a" * 83 + "1" + "q" * 6
+    value = (
+        "an83characterlonghumanreadablepartthatcontainsthenumber1"
+        "andtheexcludedcharactersbio1tt5tgs"
+    )
     assert len(value) == 90
 
-    result = run_rule(tmp_path, value)
+    result = run_rule(
+        tmp_path,
+        value,
+        shapes=[(90, 83)],
+    )
 
     assert result.returncode == 0, result.stderr
     assert "Bech32_Candidate" in result.stdout
@@ -103,47 +126,80 @@ def test_generated_bech32_rule_allows_90_character_candidate(tmp_path):
 def test_generated_bech32_rule_rejects_data_part_shorter_than_checksum(tmp_path):
     value = "a1" + "q" * 5
 
-    result = run_rule(tmp_path, value)
+    result = run_rule(
+        tmp_path,
+        value,
+        shapes=[(8, 1)],
+    )
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
 
 def test_generated_bech32_rule_allows_six_character_data_part(tmp_path):
-    value = "a1" + "q" * 6
+    value = "A12UEL5L"
+    assert len(value[value.rfind("1") + 1:]) == 6
 
-    result = run_rule(tmp_path, value)
+    result = run_rule(
+        tmp_path,
+        value,
+        shapes=[(8, 1)],
+    )
 
     assert result.returncode == 0, result.stderr
     assert "Bech32_Candidate" in result.stdout
 
 def test_generated_bech32_rule_allows_lowercase_candidate(tmp_path):
-    result = run_rule(tmp_path, "a1qqqqqq")
+    result = run_rule(
+        tmp_path,
+        "a12uel5l",
+        shapes=[(8, 1)],
+    )
 
     assert result.returncode == 0, result.stderr
     assert "Bech32_Candidate" in result.stdout
-
 
 def test_generated_bech32_rule_allows_uppercase_candidate(tmp_path):
-    result = run_rule(tmp_path, "A1QQQQQQ")
+    result = run_rule(
+        tmp_path,
+        "A12UEL5L",
+        shapes=[(8, 1)],
+    )
 
     assert result.returncode == 0, result.stderr
     assert "Bech32_Candidate" in result.stdout
 
-
 def test_generated_bech32_rule_rejects_mixed_case_candidate(tmp_path):
-    result = run_rule(tmp_path, "a1QQQQQQ")
+    result = run_rule(
+        tmp_path,
+        "a1QQQQQQ",
+        shapes=[(8, 1)],
+    )
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
 
+
 def test_generated_bech32_rule_rejects_mixed_case_hrp(tmp_path):
-    result = run_rule(tmp_path, "aB1qqqqqq")
+    result = run_rule(
+        tmp_path,
+        "aB1qqqqqq",
+        shapes=[(9, 2)],
+    )
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
 
 def test_generated_bech32_rule_allows_one_in_hrp(tmp_path):
-    result = run_rule(tmp_path, "foo1bar1qqqqqq")
+    value = "foo1bar1yfwynv"
+
+    assert len(value) == 14
+    assert value.rfind("1") == 7
+
+    result = run_rule(
+        tmp_path,
+        value,
+        shapes=[(14, 7)],
+    )
 
     assert result.returncode == 0, result.stderr
     assert "Bech32_Candidate" in result.stdout
@@ -994,3 +1050,33 @@ rule Polymod_Input_Bits_Equivalent
 
     assert result.returncode == 0, result.stderr
     assert "Polymod_Input_Bits_Equivalent" in result.stdout
+
+def test_generated_bech32_rule_validates_checksum(
+    tmp_path,
+):
+    shapes = [
+        (8, 1),
+        (45, 6),
+    ]
+
+    valid = run_rule(
+        tmp_path,
+        "A12UEL5L",
+        shapes=shapes,
+    )
+
+    invalid = run_rule(
+        tmp_path,
+        "A12UEL5M",
+        shapes=shapes,
+    )
+
+    different_shape = run_rule(
+        tmp_path,
+        "abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw",
+        shapes=shapes,
+    )
+
+    assert "Bech32_Candidate" in valid.stdout
+    assert invalid.stdout == ""
+    assert "Bech32_Candidate" in different_shape.stdout
