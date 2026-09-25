@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+
+import argparse
+from pathlib import Path
+
+from yarithmetic.benchmark.runner import (
+    Workspace,
+    benchmark_workspace,
+    write_metrics,
+)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Benchmark an existing Bech32/Bech32m workspace.",
+    )
+    parser.add_argument(
+        "workspace",
+        type=Path,
+        help="Existing benchmark workspace",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Path to write benchmark metrics JSON",
+    )
+
+    args = parser.parse_args()
+
+    workspace = Workspace(
+        corpus_path=args.workspace / "corpus",
+        manifest_path=args.workspace / "corpus" / "manifest.json",
+        rule_path=args.workspace / "bech32.yar",
+        compiled_rule_path=args.workspace / "bech32.yarc",
+    )
+
+    metrics = benchmark_workspace(workspace)
+    write_metrics(args.output, metrics)
+
+
+if __name__ == "__main__":
+    main()

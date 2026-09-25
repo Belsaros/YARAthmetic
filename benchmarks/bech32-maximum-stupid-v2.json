@@ -1,0 +1,87 @@
+{
+  "artifacts": {
+    "compiled_bytes": 138357033,
+    "source_bytes": 193143862
+  },
+  "corpus": {
+    "bytes": 131358,
+    "files": 7,
+    "seed": 12345
+  },
+  "correctness": {
+    "false_negative": 0,
+    "false_positive": 0,
+    "true_negative": 5,
+    "true_positive": 2
+  },
+  "environment": {
+    "cpu_model": "AMD Ryzen 9 3900X 12-Core Processor",
+    "yara_version": "4.1.3"
+  },
+  "files": {
+    "adversarial/0000.txt": {
+      "bytes": 182,
+      "max_rss_kib": 214252,
+      "returncode": 0,
+      "system_seconds": 0.2,
+      "user_seconds": 0.11,
+      "wall_seconds": 0.31
+    },
+    "adversarial/0001.txt": {
+      "bytes": 102466,
+      "max_rss_kib": 214456,
+      "returncode": 0,
+      "system_seconds": 0.17,
+      "user_seconds": 7.66,
+      "wall_seconds": 7.43
+    },
+    "negative-clean/0000.txt": {
+      "bytes": 6417,
+      "max_rss_kib": 214288,
+      "returncode": 0,
+      "system_seconds": 0.1,
+      "user_seconds": 0.12,
+      "wall_seconds": 0.21
+    },
+    "negative-nearmiss-dense/0000.txt": {
+      "bytes": 4687,
+      "max_rss_kib": 214308,
+      "returncode": 0,
+      "system_seconds": 0.11,
+      "user_seconds": 0.49,
+      "wall_seconds": 0.58
+    },
+    "negative-nearmiss/0000.txt": {
+      "bytes": 6484,
+      "max_rss_kib": 214100,
+      "returncode": 0,
+      "system_seconds": 0.11,
+      "user_seconds": 0.11,
+      "wall_seconds": 0.22
+    },
+    "positive-dense/0000.txt": {
+      "bytes": 4687,
+      "max_rss_kib": 214144,
+      "returncode": 0,
+      "system_seconds": 0.16,
+      "user_seconds": 0.15,
+      "wall_seconds": 0.3
+    },
+    "positive-sparse/0000.txt": {
+      "bytes": 6435,
+      "max_rss_kib": 214244,
+      "returncode": 0,
+      "system_seconds": 0.22,
+      "user_seconds": 0.14,
+      "wall_seconds": 0.34
+    }
+  },
+  "scan": {
+    "max_rss_kib": 214652,
+    "returncode": 0,
+    "system_seconds": 0.23,
+    "user_seconds": 8.63,
+    "wall_seconds": 9.32
+  },
+  "version": 1
+}
