@@ -1,6 +1,9 @@
 CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 
-from yarithmetic.reference.bech32 import BECH32_CONSTANT
+from yarithmetic.reference.bech32 import (
+        BECH32_CONSTANT,
+        BECH32M_CONSTANT,
+)
 
 CHARSET_VALUE_ANF = (
     # Output bit 0
@@ -123,15 +126,17 @@ def generate_shape_condition(
         candidate_length,
     )
 
-    checksum = generate_polymod_check_from_bits(
-        input_bits,
-        BECH32_CONSTANT,
+    checksum = generate_polymod_expression_from_bits(
+        input_bits
     )
 
     return f"""(
         !candidate[i] == {candidate_length}
         and uint8(@candidate[i] + {hrp_length}) == 49
-        and {checksum}
+        and for any polymod in ({checksum}) : (
+            polymod == {hex(BECH32_CONSTANT)}
+            or polymod == {hex(BECH32M_CONSTANT)}
+        )
     )"""
 
 def generate_polymod_input_bits(
@@ -182,14 +187,14 @@ def generate_polymod_input_bits(
 
     return input_bits
 
-def generate_polymod_check_from_bits(
+def generate_polymod_expression_from_bits(
     input_bits,
-    constant: int,
 ) -> str:
     state = generate_symbolic_polymod(len(input_bits))
     constant_mask, input_masks = transpose_symbolic_polymod(state)
 
     terms = []
+
     for bits in input_bits:
         if len(bits) != 5:
             raise ValueError(
@@ -208,9 +213,18 @@ def generate_polymod_check_from_bits(
         )
 
     if not terms:
-        expression = "0"
-    else:
-        expression = " ^ ".join(terms)
+        return "0"
+
+    return " ^ ".join(terms)
+
+
+def generate_polymod_check_from_bits(
+    input_bits,
+    constant: int,
+) -> str:
+    expression = generate_polymod_expression_from_bits(
+        input_bits
+    )
 
     return f"(({expression}) == {hex(constant)})"
 

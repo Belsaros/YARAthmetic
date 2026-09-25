@@ -12,6 +12,7 @@ from yarithmetic.generators.bech32 import (
     generate_polymod_check,
     generate_polymod_check_column_major,
     generate_polymod_check_from_bits,
+    generate_polymod_expression_from_bits,
     generate_polymod_inputs,
     generate_polymod_input_bits,
     generate_polymod_tap,
@@ -904,6 +905,16 @@ rule Charset_Bit
                 expression,
             )
 
+def test_generate_polymod_expression_from_bits():
+    expression = generate_polymod_expression_from_bits(
+        [
+            ["0", "0", "0", "0", "0"],
+        ],
+    )
+
+    assert isinstance(expression, str)
+    assert expression
+
 @pytest.mark.parametrize(
     "values",
     [
@@ -913,6 +924,7 @@ rule Charset_Bit
         [3, 3, 3, 0, 1, 2, 3],
     ],
 )
+
 def test_generated_polymod_check_from_bits_evaluates_in_yara(
     tmp_path,
     values,
@@ -1051,6 +1063,15 @@ rule Polymod_Input_Bits_Equivalent
     assert result.returncode == 0, result.stderr
     assert "Polymod_Input_Bits_Equivalent" in result.stdout
 
+def test_generated_rule_accepts_bech32m(tmp_path):
+    result = run_rule(
+        tmp_path,
+        "A1LQFN3A",
+        shapes=[(8, 1)],
+    )
+
+    assert "Bech32_Candidate" in result.stdout
+
 def test_generated_bech32_rule_validates_checksum(
     tmp_path,
 ):
@@ -1080,3 +1101,38 @@ def test_generated_bech32_rule_validates_checksum(
     assert "Bech32_Candidate" in valid.stdout
     assert invalid.stdout == ""
     assert "Bech32_Candidate" in different_shape.stdout
+
+def test_yara_singleton_for_can_bind_integer_expression(tmp_path):
+    rule_path = tmp_path / "singleton.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        """
+rule Singleton_For
+{
+    condition:
+        for any value in (40 + 2) : (
+            value == 42
+        )
+}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text(
+        "anything",
+        encoding="ascii",
+    )
+
+    result = subprocess.run(
+        [
+            "yara",
+            str(rule_path),
+            str(sample_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Singleton_For" in result.stdout

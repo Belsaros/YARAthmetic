@@ -1,11 +1,15 @@
+import subprocess
 from yarithmetic.benchmark.runner import (
         benchmark_correctness,
         classify_results,
+        prepare_workspace,
         run_yara,
+        run_compiled_yara,
 )
 
 def test_benchmark_correctness(tmp_path):
     rule_path = tmp_path / "test.yar"
+    compiled_rule_path = tmp_path / "test.yarc"
     corpus_path = tmp_path / "corpus"
 
     corpus_path.mkdir()
@@ -22,6 +26,15 @@ rule Benchmark_Test
 }
 """,
         encoding="utf-8",
+    )
+
+    subprocess.run(
+        [
+            "yarac",
+            str(rule_path),
+            str(compiled_rule_path),
+        ],
+        check=True,
     )
 
     files = {
@@ -59,7 +72,7 @@ rule Benchmark_Test
     }
 
     result = benchmark_correctness(
-        rule_path,
+        compiled_rule_path,
         corpus_path,
         manifest,
     )
@@ -156,6 +169,66 @@ rule Benchmark_Test
 
     matched_paths = run_yara(
         rule_path,
+        corpus_path,
+    )
+
+    assert matched_paths == {
+        "positive.txt",
+    }
+
+def test_prepare_workspace_creates_expected_paths(tmp_path):
+    workspace = prepare_workspace(
+        tmp_path,
+        seed=12345,
+        shapes=[(8, 1)],
+    )
+
+    assert workspace.corpus_path == tmp_path / "corpus"
+    assert workspace.manifest_path == tmp_path / "corpus" / "manifest.json"
+    assert workspace.rule_path == tmp_path / "bech32.yar"
+    assert workspace.compiled_rule_path == tmp_path / "bech32.yarc"
+
+    assert workspace.manifest_path.is_file()
+    assert workspace.rule_path.is_file()
+    assert workspace.compiled_rule_path.is_file()
+
+def test_run_compiled_yara(tmp_path):
+    rule_path = tmp_path / "test.yar"
+    compiled_rule_path = tmp_path / "test.yarc"
+    corpus_path = tmp_path / "corpus"
+
+    corpus_path.mkdir()
+
+    rule_path.write_text(
+        """
+rule Benchmark_Test
+{
+    strings:
+        $needle = "VALID_STRING"
+
+    condition:
+        $needle
+}
+""",
+        encoding="utf-8",
+    )
+
+    (corpus_path / "positive.txt").write_text(
+        "before VALID_STRING after",
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [
+            "yarac",
+            str(rule_path),
+            str(compiled_rule_path),
+        ],
+        check=True,
+    )
+
+    matched_paths = run_compiled_yara(
+        compiled_rule_path,
         corpus_path,
     )
 
