@@ -47,7 +47,13 @@ Initial targets include:
 * Luhn checksum validation
 * Bech32
 * Bech32m
-* Base58Check, if practical within YARA's execution model
+* Base58Check: an experimental Boolean-circuit implementation validates a
+  restricted P2PKH address format and one candidate slot per circuit. See
+  [Base58 feasibility](BASE58.md) for coverage, measurements, and generation commands.
+
+Bech32/Bech32m now uses shared checksum arithmetic across all 3,486 supported
+length/HRP shapes, producing about 254 KB of source instead of 193 MB. It still
+checks every candidate occurrence. See [Bech32 implementation](BECH32.md).
 
 Additional validators may be added where they provide interesting or useful demonstrations of algorithmic validation inside YARA.
 

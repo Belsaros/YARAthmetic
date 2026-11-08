@@ -1,0 +1,87 @@
+{
+  "artifacts": {
+    "compiled_bytes": 138259357,
+    "source_bytes": 193143862
+  },
+  "corpus": {
+    "bytes": 131358,
+    "files": 7,
+    "seed": 12345
+  },
+  "correctness": {
+    "false_negative": 0,
+    "false_positive": 0,
+    "true_negative": 5,
+    "true_positive": 2
+  },
+  "environment": {
+    "cpu_model": "QEMU Virtual CPU version 2.5+",
+    "yara_version": "4.5.2"
+  },
+  "files": {
+    "adversarial/0000.txt": {
+      "bytes": 182,
+      "max_rss_kib": 216936,
+      "returncode": 0,
+      "system_seconds": 0.14,
+      "user_seconds": 0.36,
+      "wall_seconds": 0.5
+    },
+    "adversarial/0001.txt": {
+      "bytes": 102466,
+      "max_rss_kib": 216388,
+      "returncode": 0,
+      "system_seconds": 0.14,
+      "user_seconds": 10.23,
+      "wall_seconds": 10.38
+    },
+    "negative-clean/0000.txt": {
+      "bytes": 6417,
+      "max_rss_kib": 217208,
+      "returncode": 0,
+      "system_seconds": 0.18,
+      "user_seconds": 0.35,
+      "wall_seconds": 0.54
+    },
+    "negative-nearmiss-dense/0000.txt": {
+      "bytes": 4687,
+      "max_rss_kib": 217260,
+      "returncode": 0,
+      "system_seconds": 0.2,
+      "user_seconds": 0.92,
+      "wall_seconds": 1.13
+    },
+    "negative-nearmiss/0000.txt": {
+      "bytes": 6484,
+      "max_rss_kib": 216044,
+      "returncode": 0,
+      "system_seconds": 0.18,
+      "user_seconds": 0.35,
+      "wall_seconds": 0.54
+    },
+    "positive-dense/0000.txt": {
+      "bytes": 4687,
+      "max_rss_kib": 215316,
+      "returncode": 0,
+      "system_seconds": 0.17,
+      "user_seconds": 0.37,
+      "wall_seconds": 0.54
+    },
+    "positive-sparse/0000.txt": {
+      "bytes": 6435,
+      "max_rss_kib": 216964,
+      "returncode": 0,
+      "system_seconds": 0.16,
+      "user_seconds": 0.39,
+      "wall_seconds": 0.55
+    }
+  },
+  "scan": {
+    "max_rss_kib": 218320,
+    "returncode": 0,
+    "system_seconds": 0.19,
+    "user_seconds": 13.4,
+    "wall_seconds": 12.25
+  },
+  "version": 1
+}

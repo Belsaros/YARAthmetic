@@ -3,6 +3,7 @@ CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 from yarithmetic.reference.bech32 import (
         BECH32_CONSTANT,
         BECH32M_CONSTANT,
+        polymod_step as reference_polymod_step,
 )
 
 CHARSET_VALUE_ANF = (
@@ -115,6 +116,246 @@ POLYMOD_GENERATORS = (
     0x3D4233DD,
     0x2A1462B3,
 )
+
+def generate_polymod_distance_expression(
+    state_expression,
+    distance_expression,
+    expected_expression,
+):
+    matrices = [
+        generate_polymod_transition_matrix(1 << bit)
+        for bit in range(8)
+    ]
+
+    state_names = [
+        f"polymod_state_{bit}"
+        for bit in range(8)
+    ]
+
+    expression = (
+        f"{state_names[-1]} == {expected_expression}"
+    )
+
+    for bit in reversed(range(8)):
+        previous_state = (
+            state_expression
+            if bit == 0
+            else state_names[bit - 1]
+        )
+
+        advanced = generate_polymod_transition_expression(
+            matrices[bit],
+            previous_state,
+        )
+
+        distance_bit = (
+            f"(({distance_expression} >> {bit}) & 1)"
+        )
+
+        selected = (
+            f"({previous_state}"
+            f" ^ (({previous_state} ^ ({advanced}))"
+            f" & (0 - {distance_bit})))"
+        )
+
+        expression = (
+            f"for any {state_names[bit]} in ({selected}) : ("
+            f"{expression}"
+            f")"
+        )
+
+    return expression
+
+def generate_polymod_transition_expression(
+    matrix,
+    state_expression,
+):
+    terms = []
+
+    for input_bit, transformed_basis in enumerate(matrix):
+        state_bit = (
+            f"(({state_expression} >> {input_bit}) & 1)"
+        )
+
+        terms.append(
+            f"({hex(transformed_basis)}"
+            f" & (0 - {state_bit}))"
+        )
+
+    return " ^ ".join(terms)
+
+def apply_polymod_distance(state, distance):
+    for bit in range(8):
+        if (distance >> bit) & 1:
+            matrix = generate_polymod_transition_matrix(
+                1 << bit
+            )
+            state = apply_polymod_transition_matrix(
+                matrix,
+                state,
+            )
+
+    return state
+
+def apply_polymod_transition_matrix(matrix, state):
+    result = 0
+
+    for input_bit in range(30):
+        if (state >> input_bit) & 1:
+            result ^= matrix[input_bit]
+
+    return result
+
+def generate_polymod_transition_matrix(steps):
+    matrix = []
+
+    for input_bit in range(30):
+        state = 1 << input_bit
+
+        for _ in range(steps):
+            state = reference_polymod_step(state, 0)
+
+        matrix.append(state)
+
+    return tuple(matrix)
+
+def select_packed_polymod_influence(
+    packed,
+    distance,
+    value,
+):
+    influence = 0
+
+    for input_bit in range(5):
+        input_value = (value >> input_bit) & 1
+
+        for output_bit in range(30):
+            coefficient = select_packed_polymod_coefficient(
+                packed[input_bit][output_bit],
+                distance,
+            )
+
+            influence ^= (
+                input_value
+                & coefficient
+            ) << output_bit
+
+    return influence
+
+def pack_polymod_influence_table(table):
+    return tuple(
+        tuple(
+            pack_polymod_coefficient_by_distance(
+                table,
+                input_bit,
+                output_bit,
+            )
+            for output_bit in range(30)
+        )
+        for input_bit in range(5)
+    )
+
+def generate_packed_polymod_coefficient_expression(
+    chunks,
+    distance_expression,
+):
+    m0, m1, m2 = chunks
+
+    threshold_63 = generate_integer_threshold_expression(
+        distance_expression,
+        63,
+    )
+    threshold_126 = generate_integer_threshold_expression(
+        distance_expression,
+        126,
+    )
+
+    selected = (
+        f"({hex(m0)}"
+        f" ^ ({hex(m0 ^ m1)} & (0 - {threshold_63}))"
+        f" ^ ({hex(m1 ^ m2)} & (0 - {threshold_126})))"
+    )
+
+    return (
+        f"(({selected} >> "
+        f"(({distance_expression}) % 63)) & 1)"
+    )
+
+def generate_integer_threshold_expression(
+    value_expression,
+    threshold,
+):
+    return (
+        f"(({value_expression} + {256 - threshold}) >> 8)"
+    )
+
+def select_packed_polymod_coefficient(chunks, distance):
+    m0, m1, m2 = chunks
+
+    d01 = m0 ^ m1
+    d12 = m1 ^ m2
+
+    selected = (
+        m0
+        ^ (d01 & -int(distance >= 63))
+        ^ (d12 & -int(distance >= 126))
+    )
+
+    return (selected >> (distance % 63)) & 1
+
+def pack_polymod_coefficient_by_distance(
+    table,
+    input_bit,
+    output_bit,
+):
+    bits = [
+        (masks[input_bit] >> output_bit) & 1
+        for masks in table
+    ]
+
+    return pack_bits_into_63_bit_chunks(bits)
+
+def pack_bits_into_63_bit_chunks(bits):
+    chunks = []
+
+    for start in range(0, len(bits), 63):
+        chunk = 0
+
+        for offset, bit in enumerate(bits[start:start + 63]):
+            chunk |= bit << offset
+
+        chunks.append(chunk)
+
+    return tuple(chunks)
+
+def generate_polymod_input_influence_masks(distance):
+    state = generate_symbolic_polymod(distance + 1)
+    _, input_masks = transpose_symbolic_polymod(state)
+
+    return tuple(
+        input_masks[("input", 0, bit)]
+        for bit in range(5)
+    )
+
+def generate_polymod_input_influence_table(max_distance):
+    state = generate_symbolic_polymod(max_distance + 1)
+    _, input_masks = transpose_symbolic_polymod(state)
+
+    return [
+        tuple(
+            input_masks[("input", max_distance - distance, bit)]
+            for bit in range(5)
+        )
+        for distance in range(max_distance + 1)
+    ]
+
+def generate_separator_position_expression(
+    candidate_offset,
+    position,
+):
+    return (
+        f"uint8({candidate_offset} + {position}) == 49"
+    )
 
 def generate_shape_condition(
     candidate_length,
@@ -472,7 +713,7 @@ def generate_charset_value(byte_expression: str) -> str:
 
     return "(" + " | ".join(bits) + ")"
 
-def generate_bech32_rule(
+def generate_bech32_rule_unrolled(
     shapes=None,
 ) -> str:
     if shapes is None:
@@ -531,3 +772,17 @@ rule Bech32_Candidate
         )
 }}
 """
+
+
+def generate_bech32_rule(shapes=None) -> str:
+    """Generate full-coverage compact YARA, or unroll explicitly chosen shapes.
+
+    A small shape list is cheaper to express directly. Full coverage shares
+    polymod arithmetic across lengths and HRP positions instead of repeating
+    that arithmetic for all 3,486 shapes.
+    """
+    if shapes is not None:
+        return generate_bech32_rule_unrolled(shapes=shapes)
+    from yarithmetic.generators.bech32_compact import generate_compact_bech32_rule
+
+    return generate_compact_bech32_rule()

@@ -3,22 +3,37 @@ import subprocess
 import pytest
 
 from yarithmetic.generators.bech32 import (
+    apply_polymod_distance,
+    apply_polymod_transition_matrix,
     generate_bech32_rule,
     generate_bit_mask,
     generate_charset_bit,
     generate_charset_value,
     generate_hrp_high_value,
     generate_hrp_low_value,
+    generate_integer_threshold_expression,
+    generate_packed_polymod_coefficient_expression,
     generate_polymod_check,
     generate_polymod_check_column_major,
     generate_polymod_check_from_bits,
+    generate_polymod_distance_expression,
     generate_polymod_expression_from_bits,
     generate_polymod_inputs,
     generate_polymod_input_bits,
+    generate_polymod_input_influence_masks,
+    generate_polymod_input_influence_table,
     generate_polymod_tap,
+    generate_polymod_transition_expression,
+    generate_polymod_transition_matrix,
     generate_polymod_step,
+    generate_separator_position_expression,
     generate_symbolic_bit_expression,
     generate_symbolic_polymod,
+    pack_bits_into_63_bit_chunks,
+    pack_polymod_coefficient_by_distance,
+    pack_polymod_influence_table,
+    select_packed_polymod_coefficient,
+    select_packed_polymod_influence,
     transpose_symbolic_polymod,
 )
 
@@ -1136,3 +1151,851 @@ rule Singleton_For
 
     assert result.returncode == 0, result.stderr
     assert "Singleton_For" in result.stdout
+
+def test_generated_separator_position_expression():
+    assert generate_separator_position_expression(
+        "@candidate[i]",
+        7,
+    ) == "uint8(@candidate[i] + 7) == 49"
+
+def test_yara_loop_variable_can_index_candidate(tmp_path):
+    rule_path = tmp_path / "loop-offset.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        r"""
+rule Loop_Offset
+{
+    strings:
+        $candidate = /abc1def/
+
+    condition:
+        for any i in (1..#candidate) : (
+            for any h in (1..6) : (
+                uint8(@candidate[i] + h) == 49
+            )
+        )
+}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text(
+        "abc1def",
+        encoding="ascii",
+    )
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Loop_Offset" in result.stdout
+
+def test_yara_loop_range_can_depend_on_runtime_length(tmp_path):
+    rule_path = tmp_path / "runtime-range.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        r"""
+rule Runtime_Range
+{
+    strings:
+        $candidate = /a1bcdefg/
+
+    condition:
+        for any i in (1..#candidate) : (
+            for any length in (!candidate[i]) : (
+                for any h in (1..length - 7) : (
+                    uint8(@candidate[i] + h) == 49
+                )
+            )
+        )
+}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text(
+        "a1bcdefg",
+        encoding="ascii",
+    )
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Runtime_Range" in result.stdout
+
+@pytest.mark.parametrize("distance", [0, 1, 2, 31, 62, 63, 64, 89, 90, 172])
+def test_polymod_input_influence_depends_only_on_distance(distance):
+    short_length = distance + 1
+    long_length = distance + 2
+
+    short_state = generate_symbolic_polymod(short_length)
+    _, short_masks = transpose_symbolic_polymod(short_state)
+
+    long_state = generate_symbolic_polymod(long_length)
+    _, long_masks = transpose_symbolic_polymod(long_state)
+
+    for bit in range(5):
+        assert short_masks[("input", 0, bit)] == long_masks[
+            ("input", 1, bit)
+        ]
+
+@pytest.mark.parametrize("distance", [0, 1, 2, 31, 62, 63, 64, 89, 90, 172])
+def test_polymod_input_influence_masks(distance):
+    state = generate_symbolic_polymod(distance + 1)
+    _, input_masks = transpose_symbolic_polymod(state)
+
+    expected = tuple(
+        input_masks[("input", 0, bit)]
+        for bit in range(5)
+    )
+
+    assert generate_polymod_input_influence_masks(distance) == expected
+
+def test_polymod_input_influence_table_matches_reference():
+    table = generate_polymod_input_influence_table(172)
+
+    assert len(table) == 173
+
+    for distance, masks in enumerate(table):
+        assert masks == generate_polymod_input_influence_masks(distance)
+
+def test_pack_bits_into_63_bit_chunks():
+    bits = [
+        1 if index in {0, 1, 62, 63, 64, 125, 126, 172} else 0
+        for index in range(173)
+    ]
+
+    chunks = pack_bits_into_63_bit_chunks(bits)
+
+    assert len(chunks) == 3
+
+    for index, expected in enumerate(bits):
+        chunk = chunks[index // 63]
+        bit = (chunk >> (index % 63)) & 1
+        assert bit == expected
+
+@pytest.mark.parametrize(
+    ("input_bit", "output_bit"),
+    [
+        (0, 0),
+        (0, 29),
+        (2, 15),
+        (4, 0),
+        (4, 29),
+    ],
+)
+def test_pack_polymod_coefficient_by_distance(input_bit, output_bit):
+    table = generate_polymod_input_influence_table(172)
+
+    chunks = pack_polymod_coefficient_by_distance(
+        table,
+        input_bit,
+        output_bit,
+    )
+
+    assert len(chunks) == 3
+
+    for distance, masks in enumerate(table):
+        expected = (masks[input_bit] >> output_bit) & 1
+        actual = (
+            chunks[distance // 63]
+            >> (distance % 63)
+        ) & 1
+
+        assert actual == expected
+
+def test_select_packed_polymod_coefficient():
+    table = generate_polymod_input_influence_table(172)
+    chunks = pack_polymod_coefficient_by_distance(
+        table,
+        2,
+        15,
+    )
+
+    for distance, masks in enumerate(table):
+        expected = (masks[2] >> 15) & 1
+        actual = select_packed_polymod_coefficient(
+            chunks,
+            distance,
+        )
+
+        assert actual == expected
+
+@pytest.mark.parametrize("threshold", [63, 126])
+def test_generate_integer_threshold_expression(tmp_path, threshold):
+    rule_path = tmp_path / "threshold.yar"
+
+    expression = generate_integer_threshold_expression(
+        "d",
+        threshold,
+    )
+
+    conditions = []
+
+    for distance in range(173):
+        expected = int(distance >= threshold)
+        conditions.append(
+            f"({expression.replace('d', str(distance))}) == {expected}"
+        )
+
+    rule_path.write_text(
+        """
+rule Integer_Threshold
+{
+    condition:
+        %s
+}
+"""
+        % "\n        and ".join(conditions),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(rule_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Integer_Threshold" in result.stdout
+
+def test_generated_packed_polymod_coefficient_expression(tmp_path):
+    table = generate_polymod_input_influence_table(172)
+    chunks = pack_polymod_coefficient_by_distance(
+        table,
+        2,
+        15,
+    )
+
+    expression = generate_packed_polymod_coefficient_expression(
+        chunks,
+        "__DISTANCE__",
+    )
+
+    conditions = []
+
+    for distance in range(173):
+        expected = select_packed_polymod_coefficient(
+            chunks,
+            distance,
+        )
+        conditions.append(
+            f"({expression.replace('__DISTANCE__', str(distance))}) == {expected}"
+        )
+
+    rule_path = tmp_path / "packed-coefficient.yar"
+
+    rule_path.write_text(
+        """
+rule Packed_Coefficient
+{
+    condition:
+        %s
+}
+"""
+        % "\n        and ".join(conditions),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(rule_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Packed_Coefficient" in result.stdout
+
+def test_yara_zero_minus_integer_bit_produces_mask(tmp_path):
+    rule_path = tmp_path / "integer-mask.yar"
+
+    rule_path.write_text(
+        r"""
+rule Integer_Mask
+{
+    condition:
+        (0x12345678 & (0 - ((62 + 193) >> 8))) == 0
+        and
+        (0x12345678 & (0 - ((63 + 193) >> 8))) == 0x12345678
+}
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(rule_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Integer_Mask" in result.stdout
+
+def test_pack_polymod_influence_table():
+    table = generate_polymod_input_influence_table(172)
+
+    packed = pack_polymod_influence_table(table)
+
+    assert len(packed) == 5
+
+    for input_bit in range(5):
+        assert len(packed[input_bit]) == 30
+
+        for output_bit in range(30):
+            chunks = packed[input_bit][output_bit]
+
+            assert len(chunks) == 3
+
+            for distance, masks in enumerate(table):
+                expected = (
+                    masks[input_bit] >> output_bit
+                ) & 1
+
+                actual = (
+                    chunks[distance // 63]
+                    >> (distance % 63)
+                ) & 1
+
+                assert actual == expected
+
+@pytest.mark.parametrize(
+    ("distance", "value"),
+    [
+        (0, 0),
+        (0, 31),
+        (1, 1),
+        (31, 17),
+        (62, 9),
+        (63, 21),
+        (64, 6),
+        (125, 27),
+        (126, 13),
+        (172, 31),
+    ],
+)
+def test_select_packed_polymod_influence(distance, value):
+    table = generate_polymod_input_influence_table(172)
+    packed = pack_polymod_influence_table(table)
+
+    expected = 0
+
+    for input_bit in range(5):
+        if (value >> input_bit) & 1:
+            expected ^= table[distance][input_bit]
+
+    assert select_packed_polymod_influence(
+        packed,
+        distance,
+        value,
+    ) == expected
+
+def test_yara_nested_singleton_for_can_chain_integer_bindings(
+    tmp_path,
+):
+    rule_path = tmp_path / "nested-bindings.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        """
+rule Nested_Bindings
+{
+    condition:
+        for any s0 in (1) : (
+            for any s1 in (s0 << 5) : (
+                for any s2 in (s1 << 5) : (
+                    for any s3 in (s2 << 5) : (
+                        s3 == 32768
+                    )
+                )
+            )
+        )
+}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text("x", encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Nested_Bindings" in result.stdout
+
+def test_yara_chained_binding_can_apply_polymod_transition(
+    tmp_path,
+):
+    rule_path = tmp_path / "polymod-transition.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    initial = 0x3B6A57B2
+
+    expected = reference_polymod_step(
+        initial,
+        0,
+    )
+
+    rule_path.write_text(
+        f"""
+rule Polymod_Transition
+{{
+    condition:
+        for any s0 in ({initial}) : (
+            for any top in (s0 >> 25) : (
+                for any s1 in (
+                    ((s0 & 0x1ffffff) << 5)
+                    ^ (0x3b6a57b2 & (0 - (top & 1)))
+                    ^ (0x26508e6d & (0 - ((top >> 1) & 1)))
+                    ^ (0x1ea119fa & (0 - ((top >> 2) & 1)))
+                    ^ (0x3d4233dd & (0 - ((top >> 3) & 1)))
+                    ^ (0x2a1462b3 & (0 - ((top >> 4) & 1)))
+                ) : (
+                    s1 == {expected}
+                )
+            )
+        )
+}}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text("x", encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_Transition" in result.stdout
+
+@pytest.mark.parametrize(
+    ("enabled", "expected"),
+    [
+        (0, 0x12345678),
+        (
+            1,
+            reference_polymod_step(
+                0x12345678,
+                0,
+            ),
+        ),
+    ],
+)
+def test_yara_can_conditionally_apply_polymod_transition(
+    tmp_path,
+    enabled,
+    expected,
+):
+    rule_path = tmp_path / "conditional-transition.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        f"""
+rule Conditional_Transition
+{{
+    condition:
+        for any s0 in (0x12345678) : (
+            for any top in (s0 >> 25) : (
+                for any advanced in (
+                    ((s0 & 0x1ffffff) << 5)
+                    ^ (0x3b6a57b2 & (0 - (top & 1)))
+                    ^ (0x26508e6d & (0 - ((top >> 1) & 1)))
+                    ^ (0x1ea119fa & (0 - ((top >> 2) & 1)))
+                    ^ (0x3d4233dd & (0 - ((top >> 3) & 1)))
+                    ^ (0x2a1462b3 & (0 - ((top >> 4) & 1)))
+                ) : (
+                    for any selected in (
+                        s0
+                        ^ (
+                            (s0 ^ advanced)
+                            & (0 - {enabled})
+                        )
+                    ) : (
+                        selected == {expected}
+                    )
+                )
+            )
+        )
+}}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text("x", encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Conditional_Transition" in result.stdout
+
+@pytest.mark.parametrize(
+    "distance",
+    [0, 1, 2, 3, 5, 31, 62, 63, 64, 125, 126, 127, 128, 172],
+)
+def test_polymod_distance_by_binary_powers(distance):
+    expected = 1
+
+    for _ in range(distance):
+        expected = reference_polymod_step(expected, 0)
+
+    actual = 1
+
+    for bit in range(8):
+        if (distance >> bit) & 1:
+            for _ in range(1 << bit):
+                actual = reference_polymod_step(actual, 0)
+
+    assert actual == expected
+
+@pytest.mark.parametrize(
+    "steps",
+    [1, 2, 4, 8, 16, 32, 64, 128],
+)
+def test_polymod_transition_matrix_matches_reference(steps):
+    matrix = generate_polymod_transition_matrix(steps)
+
+    assert len(matrix) == 30
+
+    for input_bit in range(30):
+        expected = 1 << input_bit
+
+        for _ in range(steps):
+            expected = reference_polymod_step(
+                expected,
+                0,
+            )
+
+        assert matrix[input_bit] == expected
+
+@pytest.mark.parametrize(
+    ("steps", "state"),
+    [
+        (1, 0),
+        (1, 1),
+        (1, 0x3fffffff),
+        (2, 0x12345678),
+        (4, 0x2abcdef0),
+        (8, 0x15555555),
+        (16, 0x3b6a57b2),
+        (32, 0x26508e6d),
+        (64, 0x1ea119fa),
+        (128, 0x3d4233dd),
+    ],
+)
+def test_apply_polymod_transition_matrix(steps, state):
+    matrix = generate_polymod_transition_matrix(steps)
+
+    expected = state
+
+    for _ in range(steps):
+        expected = reference_polymod_step(
+            expected,
+            0,
+        )
+
+    assert apply_polymod_transition_matrix(
+        matrix,
+        state,
+    ) == expected
+
+@pytest.mark.parametrize(
+    ("distance", "state"),
+    [
+        (0, 0x12345678),
+        (1, 0x12345678),
+        (2, 0x12345678),
+        (3, 0x12345678),
+        (7, 0x2abcdef0),
+        (31, 0x15555555),
+        (62, 0x3b6a57b2),
+        (63, 0x26508e6d),
+        (64, 0x1ea119fa),
+        (127, 0x3d4233dd),
+        (128, 0x2a1462b3),
+        (172, 0x12345678),
+    ],
+)
+def test_apply_polymod_distance(distance, state):
+    expected = state
+
+    for _ in range(distance):
+        expected = reference_polymod_step(
+            expected,
+            0,
+        )
+
+    assert apply_polymod_distance(
+        state,
+        distance,
+    ) == expected
+
+@pytest.mark.parametrize(
+    ("steps", "state"),
+    [
+        (1, 0x12345678),
+        (2, 0x2abcdef0),
+        (8, 0x15555555),
+        (32, 0x3b6a57b2),
+        (128, 0x26508e6d),
+    ],
+)
+def test_generated_polymod_transition_expression_in_yara(
+    tmp_path,
+    steps,
+    state,
+):
+    matrix = generate_polymod_transition_matrix(steps)
+
+    expression = generate_polymod_transition_expression(
+        matrix,
+        "state",
+    )
+
+    expected = apply_polymod_transition_matrix(
+        matrix,
+        state,
+    )
+
+    rule_path = tmp_path / "matrix-transition.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        f"""
+rule Matrix_Transition
+{{
+    condition:
+        for any state in ({state}) : (
+            ({expression}) == {expected}
+        )
+}}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text("x", encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Matrix_Transition" in result.stdout
+
+@pytest.mark.parametrize(
+    ("distance", "state"),
+    [
+        (0, 0x12345678),
+        (1, 0x12345678),
+        (3, 0x12345678),
+        (7, 0x2abcdef0),
+        (31, 0x15555555),
+        (63, 0x26508e6d),
+        (64, 0x1ea119fa),
+        (127, 0x3d4233dd),
+        (128, 0x2a1462b3),
+        (172, 0x12345678),
+    ],
+)
+def test_generated_polymod_distance_expression_in_yara(
+    tmp_path,
+    distance,
+    state,
+):
+    expected = apply_polymod_distance(
+        state,
+        distance,
+    )
+
+    expression = generate_polymod_distance_expression(
+        "state",
+        "distance",
+        str(expected),
+    )
+
+    rule_path = tmp_path / "polymod-distance.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        f"""
+rule Polymod_Distance
+{{
+    condition:
+        for any state in ({state}) : (
+            for any distance in ({distance}) : (
+                {expression}
+            )
+        )
+}}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text("x", encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Polymod_Distance" in result.stdout
+
+@pytest.mark.parametrize(
+    "depth",
+    range(1, 12),
+)
+def test_yara_singleton_for_nesting_limit(
+    tmp_path,
+    depth,
+):
+    expression = "true"
+
+    for level in reversed(range(depth)):
+        expression = (
+            f"for any value_{level} in ({level}) : ("
+            f"{expression}"
+            f")"
+        )
+
+    rule_path = tmp_path / "nesting.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        f"""
+rule Nesting
+{{
+    condition:
+        {expression}
+}}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text("x", encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, (
+        f"depth={depth}: {result.stderr}"
+    )
+    assert "Nesting" in result.stdout
+
+@pytest.mark.parametrize(
+    "depth",
+    range(1, 5),
+)
+def test_yara_supports_four_nested_singleton_for_loops(
+    tmp_path,
+    depth,
+):
+    expression = "true"
+
+    for level in reversed(range(depth)):
+        expression = (
+            f"for any value_{level} in ({level}) : ("
+            f"{expression}"
+            f")"
+        )
+
+    rule_path = tmp_path / "nesting.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        f"""
+rule Nesting
+{{
+    condition:
+        {expression}
+}}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text("x", encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Nesting" in result.stdout
+
+def test_yara_rejects_five_nested_singleton_for_loops(
+    tmp_path,
+):
+    expression = "true"
+
+    for level in reversed(range(5)):
+        expression = (
+            f"for any value_{level} in ({level}) : ("
+            f"{expression}"
+            f")"
+        )
+
+    rule_path = tmp_path / "nesting.yar"
+    sample_path = tmp_path / "sample.txt"
+
+    rule_path.write_text(
+        f"""
+rule Nesting
+{{
+    condition:
+        {expression}
+}}
+""",
+        encoding="utf-8",
+    )
+
+    sample_path.write_text("x", encoding="ascii")
+
+    result = subprocess.run(
+        ["yara", str(rule_path), str(sample_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "loop nesting limit exceeded" in result.stderr
+
+def test_polymod_distance_matches_input_influence_table():
+    table = generate_polymod_input_influence_table(172)
+
+    for distance in range(173):
+        for value in range(32):
+            expected = 0
+
+            for bit in range(5):
+                if (value >> bit) & 1:
+                    expected ^= table[distance][bit]
+
+            assert apply_polymod_distance(
+                value,
+                distance,
+            ) == expected

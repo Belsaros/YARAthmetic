@@ -1,0 +1,87 @@
+{
+  "artifacts": {
+    "compiled_bytes": 210038,
+    "source_bytes": 253998
+  },
+  "corpus": {
+    "bytes": 131358,
+    "files": 7,
+    "seed": 12345
+  },
+  "correctness": {
+    "false_negative": 0,
+    "false_positive": 0,
+    "true_negative": 5,
+    "true_positive": 2
+  },
+  "environment": {
+    "cpu_model": "QEMU Virtual CPU version 2.5+",
+    "yara_version": "4.5.2"
+  },
+  "files": {
+    "adversarial/0000.txt": {
+      "bytes": 182,
+      "max_rss_kib": 7040,
+      "returncode": 0,
+      "system_seconds": 0.0,
+      "user_seconds": 0.0,
+      "wall_seconds": 0.01
+    },
+    "adversarial/0001.txt": {
+      "bytes": 102466,
+      "max_rss_kib": 7224,
+      "returncode": 0,
+      "system_seconds": 0.0,
+      "user_seconds": 10.25,
+      "wall_seconds": 10.25
+    },
+    "negative-clean/0000.txt": {
+      "bytes": 6417,
+      "max_rss_kib": 6868,
+      "returncode": 0,
+      "system_seconds": 0.0,
+      "user_seconds": 0.0,
+      "wall_seconds": 0.0
+    },
+    "negative-nearmiss-dense/0000.txt": {
+      "bytes": 4687,
+      "max_rss_kib": 6964,
+      "returncode": 0,
+      "system_seconds": 0.0,
+      "user_seconds": 0.66,
+      "wall_seconds": 0.66
+    },
+    "negative-nearmiss/0000.txt": {
+      "bytes": 6484,
+      "max_rss_kib": 6988,
+      "returncode": 0,
+      "system_seconds": 0.0,
+      "user_seconds": 0.0,
+      "wall_seconds": 0.0
+    },
+    "positive-dense/0000.txt": {
+      "bytes": 4687,
+      "max_rss_kib": 7032,
+      "returncode": 0,
+      "system_seconds": 0.0,
+      "user_seconds": 0.0,
+      "wall_seconds": 0.0
+    },
+    "positive-sparse/0000.txt": {
+      "bytes": 6435,
+      "max_rss_kib": 7204,
+      "returncode": 0,
+      "system_seconds": 0.0,
+      "user_seconds": 0.0,
+      "wall_seconds": 0.0
+    }
+  },
+  "scan": {
+    "max_rss_kib": 7852,
+    "returncode": 0,
+    "system_seconds": 0.01,
+    "user_seconds": 12.02,
+    "wall_seconds": 10.58
+  },
+  "version": 1
+}
