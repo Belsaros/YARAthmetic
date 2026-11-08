@@ -31,7 +31,7 @@ and other Base58 alphabets are outside this prototype's coverage. A valid addres
 checksum also does not demonstrate ownership or activity.
 
 All Base58 generation modes accept `--output_version`, including the
-parameterized mode described below. See [compatibility](COMPATABILITY.md).
+parameterized mode described below. See [compatibility](COMPATIBILITY.md).
 
 ## Runtime candidate selection
 

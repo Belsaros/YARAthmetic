@@ -139,4 +139,4 @@ PYTHONPATH=src python3 -m yarithmetic --kind bech32 --output_version 3.6.3 --out
 
 The Python APIs accept the matching `output_version="3.6.3"` keyword. Bech32
 requires YARA 3.5 or later because it uses match lengths. See
-[compatibility](COMPATABILITY.md) for the 3.6 regex workaround and Docker tests.
+[compatibility](COMPATIBILITY.md) for the 3.6 regex workaround and Docker tests.

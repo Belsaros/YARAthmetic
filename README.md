@@ -118,19 +118,19 @@ This structure may change as the project develops.
 
 ## Compatibility
 
-Supported YARA versions will be determined through automated testing rather than assumed from syntax compatibility alone.
+YARAthmetic is tested against YARA 3.4.0, 3.5.0, 3.6.3, 3.8.1, 3.11.0, 4.0.5, 4.1.3, and 4.2.3. Feature availability varies by version; see the compatibility documentation for supported validators and limitations.
 
 Individual validators may have different minimum YARA versions.
 
 Use `--output_version 3.6.3` when generating rules for an older engine. See
-[version targeting and Docker tests](COMPATABILITY.md) for workarounds, supported
+[version targeting and Docker tests](COMPATIBILITY.md) for workarounds, supported
 validators, and the compatibility matrix.
 
 Compatibility with old YARA releases is welcome where it occurs naturally, but new development will not necessarily be constrained by legacy versions.
 
 ## Provenance
 
-YARAthmetic is an independent, clean-room project.
+YARAthmetic is an independent project whose implementations and tests are intended to be based on public specifications, documentation, and test vectors.
 
 Implementations and tests should be derived from public specifications, publicly available documentation, and public test vectors.
 
@@ -149,6 +149,14 @@ Each generated file should clearly identify itself as generated and identify the
 Contributions, additional validators, compatibility improvements, test vectors, and particularly creative abuses of YARA are welcome.
 
 Generated output should be accompanied by tests demonstrating correct behavior.
+
+## Development and acknowledgments
+
+YARAthmetic is developed with substantial assistance from OpenAI's ChatGPT and Codex, which have contributed to algorithm design, code generation, optimization, testing, and documentation.
+
+The human maintainer provides project direction, requirements, experimental validation, and release oversight.
+
+AI-generated contributions are subject to the same testing and review expectations as any other contribution. Bugs, corrections, and independent review are welcome.
 
 ## License
 
