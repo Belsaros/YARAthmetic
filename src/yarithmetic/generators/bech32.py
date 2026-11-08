@@ -1,5 +1,7 @@
 CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
 
+from yarithmetic.generators.compatibility import repeat_atom, require_match_lengths
+
 from yarithmetic.reference.bech32 import (
         BECH32_CONSTANT,
         BECH32M_CONSTANT,
@@ -715,7 +717,10 @@ def generate_charset_value(byte_expression: str) -> str:
 
 def generate_bech32_rule_unrolled(
     shapes=None,
+    *,
+    output_version=None,
 ) -> str:
+    require_match_lengths(output_version)
     if shapes is None:
         shapes = [
             (candidate_length, hrp_length)
@@ -742,7 +747,7 @@ def generate_bech32_rule_unrolled(
 rule Bech32_Candidate
 {{
     strings:
-        $candidate = /[!-~]+1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{{6,}}/ nocase
+        $candidate = /[!-~]+1{repeat_atom("[qpzry9x8gf2tvdw0s3jn54khce6mua7l]", 6, None, output_version)}/ nocase
 
     condition:
         for any i in (1..#candidate) : (
@@ -774,15 +779,16 @@ rule Bech32_Candidate
 """
 
 
-def generate_bech32_rule(shapes=None) -> str:
+def generate_bech32_rule(shapes=None, *, output_version=None) -> str:
     """Generate full-coverage compact YARA, or unroll explicitly chosen shapes.
 
     A small shape list is cheaper to express directly. Full coverage shares
     polymod arithmetic across lengths and HRP positions instead of repeating
-    that arithmetic for all 3,486 shapes.
+    that arithmetic for all 3,486 shapes. Requires YARA 3.5 or later;
+    output_version enables release-specific regex workarounds.
     """
     if shapes is not None:
-        return generate_bech32_rule_unrolled(shapes=shapes)
+        return generate_bech32_rule_unrolled(shapes=shapes, output_version=output_version)
     from yarithmetic.generators.bech32_compact import generate_compact_bech32_rule
 
-    return generate_compact_bech32_rule()
+    return generate_compact_bech32_rule(output_version=output_version)

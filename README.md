@@ -122,6 +122,10 @@ Supported YARA versions will be determined through automated testing rather than
 
 Individual validators may have different minimum YARA versions.
 
+Use `--output_version 3.6.3` when generating rules for an older engine. See
+[version targeting and Docker tests](COMPATABILITY.md) for workarounds, supported
+validators, and the compatibility matrix.
+
 Compatibility with old YARA releases is welcome where it occurs naturally, but new development will not necessarily be constrained by legacy versions.
 
 ## Provenance

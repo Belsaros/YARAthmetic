@@ -1,3 +1,5 @@
+from yarithmetic.yara_cli import compiled_options
+
 import json
 import os
 import subprocess
@@ -110,7 +112,7 @@ def measure_compiled_yara(
             "-f",
             f"{marker}%e|%U|%S|%M",
             "yara",
-            "-C",
+            *compiled_options(),
             "-r",
             str(compiled_rule_path),
             str(target_path),
@@ -146,6 +148,7 @@ def prepare_workspace(
     *,
     seed,
     shapes=None,
+    output_version=None,
 ):
     output_path = Path(output_path)
 
@@ -167,6 +170,7 @@ def prepare_workspace(
     rule_path.write_text(
         generate_bech32_rule(
             shapes=shapes,
+            output_version=output_version,
         ),
         encoding="utf-8",
     )
@@ -276,7 +280,7 @@ def run_compiled_yara(
     result = subprocess.run(
         [
             "yara",
-            "-C",
+            *compiled_options(),
             "-r",
             str(compiled_rule_path),
             str(corpus_path),

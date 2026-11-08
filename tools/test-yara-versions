@@ -13,6 +13,21 @@ VERSIONS=(
     4.2.3
 )
 
+# Optional versions select a focused matrix; options are forwarded per engine.
+SELECTED_VERSIONS=()
+TEST_OPTIONS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output_version|--output-version)
+            [[ $# -ge 2 ]] || { echo "$1 requires a version" >&2; exit 2; }
+            TEST_OPTIONS+=("$1" "$2"); shift 2 ;;
+        --) TEST_OPTIONS+=("$@"); break ;;
+        --*) echo "Unknown option: $1" >&2; exit 2 ;;
+        *) SELECTED_VERSIONS+=("$1"); shift ;;
+    esac
+done
+if [[ ${#SELECTED_VERSIONS[@]} -gt 0 ]]; then VERSIONS=("${SELECTED_VERSIONS[@]}"); fi
+
 declare -A RESULTS
 overall=0
 
@@ -23,7 +38,7 @@ for version in "${VERSIONS[@]}"; do
     echo "============================================================"
     echo
 
-    if tools/test-yara-version "$version"; then
+    if tools/test-yara-version "$version" "${TEST_OPTIONS[@]}"; then
         RESULTS["$version"]="PASS"
     else
         RESULTS["$version"]="FAIL"

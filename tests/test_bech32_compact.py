@@ -1,3 +1,5 @@
+from yara_support import OUTPUT_VERSION, compiled_options
+
 """Behavioral checks for the complete runtime-shape Bech32 generator."""
 
 import json
@@ -23,7 +25,7 @@ def test_committed_rule_is_current():
 @pytest.fixture(scope="module")
 def compiled_rule(tmp_path_factory):
     root = tmp_path_factory.mktemp("compact-bech32")
-    source = generate_bech32_rule()
+    source = generate_bech32_rule(output_version=OUTPUT_VERSION)
     rule, compiled = root / "rule.yar", root / "rule.yarc"
     rule.write_text(source)
     result = subprocess.run(["yarac", str(rule), str(compiled)], capture_output=True, text=True)
@@ -35,7 +37,7 @@ def compiled_rule(tmp_path_factory):
 
 
 def scan_directory(compiled, directory):
-    result = subprocess.run(["yara", "-C", "-r", str(compiled), str(directory)], capture_output=True, text=True)
+    result = subprocess.run(["yara", *compiled_options(), "-r", str(compiled), str(directory)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return {Path(line.split(" ", 1)[1]).name for line in result.stdout.splitlines()}
 
@@ -102,8 +104,8 @@ def test_later_candidates_case_boundaries_and_end_of_file(compiled_rule, tmp_pat
 def test_shape_restrictions_agree_with_unrolled(tmp_path):
     values = ["A12UEL5L", "A1LQFN3A", "foo1bar1yfwynv", "A12UEL5M"]
     sources = [
-        generate_compact_bech32_rule(shapes=[(8, 1)]),
-        generate_bech32_rule_unrolled(shapes=[(8, 1)]),
+        generate_compact_bech32_rule(shapes=[(8, 1)], output_version=OUTPUT_VERSION),
+        generate_bech32_rule_unrolled(shapes=[(8, 1)], output_version=OUTPUT_VERSION),
     ]
     corpus = tmp_path / "corpus"
     corpus.mkdir()

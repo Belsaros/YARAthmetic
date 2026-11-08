@@ -128,3 +128,15 @@ PYTHONPATH=src python3 tools/benchmark-bech32 /tmp/bech32-benchmark --output /tm
 Algorithm specifications:
 [BIP 173](https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki) and
 [BIP 350](https://github.com/bitcoin/bips/blob/master/bip-0350.mediawiki).
+
+## Output version
+
+The main generator accepts `--output_version`, for example:
+
+```sh
+PYTHONPATH=src python3 -m yarithmetic --kind bech32 --output_version 3.6.3 --output-dir /tmp/bech32-3.6.3
+```
+
+The Python APIs accept the matching `output_version="3.6.3"` keyword. Bech32
+requires YARA 3.5 or later because it uses match lengths. See
+[compatibility](COMPATABILITY.md) for the 3.6 regex workaround and Docker tests.

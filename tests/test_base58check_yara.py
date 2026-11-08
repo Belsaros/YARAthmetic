@@ -1,29 +1,41 @@
+from yara_support import OUTPUT_VERSION, compiled_options
+
 from hashlib import sha256
 import random
 import subprocess
 
 import pytest
 
-from yarithmetic.generators.base58 import generate_base58check_p2pkh_rule
+from yarithmetic.generators.base58 import (
+    generate_base58check_p2pkh_rule,
+    generate_base58check_p2pkh_parameterized_rule,
+)
+from yarithmetic.generators.compatibility import parse_output_version
 from yarithmetic.reference.base58 import CHARSET, validate_base58check
 
 pytestmark = pytest.mark.base58
 GENESIS = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
 
 
-@pytest.fixture(scope="module", params=[1, 2])
+@pytest.fixture(scope="module", params=[1, 2, "runtime"])
 def compiled_rule(request, tmp_path_factory):
     root = tmp_path_factory.mktemp(f"base58check-slot{request.param}")
     rule = root / "base58check.yar"
     compiled = root / "base58check.yarc"
-    rule.write_text(generate_base58check_p2pkh_rule(request.param))
-    result = subprocess.run(["yarac", str(rule), str(compiled)], capture_output=True, text=True)
+    runtime = request.param == "runtime"
+    target = parse_output_version(OUTPUT_VERSION)
+    if runtime and target is not None and target < (3, 5, 0):
+        pytest.skip("runtime candidate selection requires YARA >= 3.5")
+    rule.write_text(generate_base58check_p2pkh_parameterized_rule(output_version=OUTPUT_VERSION) if runtime
+                    else generate_base58check_p2pkh_rule(request.param, output_version=OUTPUT_VERSION))
+    externals = ["-d", "candidate_index=1"] if runtime else []
+    result = subprocess.run(["yarac", *externals, str(rule), str(compiled)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    return compiled, request.param
+    return compiled, 1 if runtime else request.param, runtime
 
 
 def scan(compiled_rule, tmp_path, values):
-    compiled, slot = compiled_rule
+    compiled, slot, runtime = compiled_rule
     # Put non-checksummed but structurally eligible candidates before the slot
     # under test. Slots count regex occurrences, including invalid checksums.
     prefix = (GENESIS[:-1] + "b\n") * (slot - 1)
@@ -31,7 +43,7 @@ def scan(compiled_rule, tmp_path, values):
     corpus.mkdir()
     for index, value in enumerate(values):
         (corpus / str(index)).write_text(prefix + value)
-    result = subprocess.run(["yara", "-C", "-r", str(compiled), str(corpus)], capture_output=True, text=True)
+    result = subprocess.run(["yara", *compiled_options(), "-r", *(["-d", f"candidate_index={slot}"] if runtime else []), str(compiled), str(corpus)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     return {int(line.rsplit("/", 1)[1]) for line in result.stdout.splitlines()}
 
@@ -77,3 +89,28 @@ def test_boundaries_missing_candidates_and_slot_limit(compiled_rule, tmp_path):
 def test_rejects_invalid_candidate_slot(slot):
     with pytest.raises(ValueError):
         generate_base58check_p2pkh_rule(slot)
+
+
+def test_runtime_selection_reuses_compiled_circuit(compiled_rule, tmp_path):
+    compiled, _, runtime = compiled_rule
+    if not runtime:
+        pytest.skip("runtime external applies to parameterized generator")
+    invalid = GENESIS[:-1] + "b"
+    sample = tmp_path / "sample"
+    # Embedded matches still count; only the selected occurrence is validated.
+    sample.write_text("z" + GENESIS + "\n" + invalid + "\n" + GENESIS)
+    for slot in [-1, 0, 1, 2, 3, 4, 17]:
+        result = subprocess.run(
+            ["yara", *compiled_options(), "-d", f"candidate_index={slot}", str(compiled), str(sample)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        assert bool(result.stdout) == (slot == 3)
+    # Runtime selection is not limited to the fixed generator's sixteen slots.
+    sample.write_text((invalid + "\n") * 16 + GENESIS)
+    result = subprocess.run(
+        ["yara", *compiled_options(), "-d", "candidate_index=17", str(compiled), str(sample)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Valid_Base58Check_P2PKH_34_Parameterized" in result.stdout

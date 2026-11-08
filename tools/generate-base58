@@ -4,27 +4,41 @@
 import argparse
 from pathlib import Path
 
+from yarithmetic.generators.compatibility import parse_output_version, require_runtime_candidate_selection
 from yarithmetic.generators.base58 import (
     generate_base58_candidate_rule,
     generate_base58check_p2pkh_rule,
+    generate_base58check_p2pkh_parameterized_rule,
 )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--kind", choices=("candidate", "p2pkh-checksum"), required=True)
+    parser.add_argument("--kind", choices=("candidate", "p2pkh-checksum", "p2pkh-checksum-parameterized"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--candidate-index", type=int, default=1,
                         help="Regex occurrence to validate, 1..16 (checksum mode only)")
+    parser.add_argument("--output_version", "--output-version", default=None,
+                        help="Target classic YARA version, e.g. 3.6.3")
     args = parser.parse_args()
+    try:
+        parse_output_version(args.output_version)
+        if args.kind == "p2pkh-checksum-parameterized":
+            require_runtime_candidate_selection(args.output_version)
+    except ValueError as error:
+        parser.error(str(error))
     if args.kind == "candidate":
         if args.candidate_index != 1:
             parser.error("--candidate-index applies only to p2pkh-checksum")
-        source = generate_base58_candidate_rule()
+        source = generate_base58_candidate_rule(output_version=args.output_version)
+    elif args.kind == "p2pkh-checksum-parameterized":
+        if args.candidate_index != 1:
+            parser.error("set candidate_index at scan time for parameterized mode")
+        source = generate_base58check_p2pkh_parameterized_rule(output_version=args.output_version)
     else:
         if not 1 <= args.candidate_index <= 16:
             parser.error("--candidate-index must be between 1 and 16")
-        source = generate_base58check_p2pkh_rule(args.candidate_index)
+        source = generate_base58check_p2pkh_rule(args.candidate_index, output_version=args.output_version)
     args.output.write_text(source, encoding="utf-8")
     print(f"Generated {args.output} ({len(source.encode('utf-8')):,} bytes)")
 

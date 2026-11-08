@@ -1,25 +1,32 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
-if [[ $# -ne 1 ]]; then
-    echo "Usage: $0 <yara-version>" >&2
+if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 <yara-version> [--output_version <target|default>] [-- pytest-args...]" >&2
     exit 2
 fi
-
 VERSION="$1"
-echo
-echo "=== Testing YARA $VERSION ==="
-echo
-
-docker build \
+shift
+OUTPUT_VERSION="$VERSION"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output_version|--output-version)
+            [[ $# -ge 2 ]] || { echo "$1 requires a version" >&2; exit 2; }
+            OUTPUT_VERSION="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+done
+if [[ "$OUTPUT_VERSION" == default ]]; then OUTPUT_VERSION=""; fi
+# Set DOCKER="sudo docker" where the daemon socket requires root access.
+read -r -a DOCKER_COMMAND <<< "${DOCKER:-docker}"
+echo "=== Testing YARA $VERSION (output target: ${OUTPUT_VERSION:-default}) ==="
+"${DOCKER_COMMAND[@]}" build \
     --build-arg YARA_VERSION="$VERSION" \
-    -t "yarithmetic-test:$VERSION" \
-    docker/yara
-
-docker run --rm \
-    -v "$PWD:/work:ro" \
-    -w /work \
+    -t "yarithmetic-test:$VERSION" docker/yara
+"${DOCKER_COMMAND[@]}" run --rm \
+    -v "$PWD:/work:ro" -w /work \
     -e PYTHONPATH=/work/src \
+    -e YARA_OUTPUT_VERSION="$OUTPUT_VERSION" \
     "yarithmetic-test:$VERSION" \
-    python -m pytest -v -p no:cacheprovider
+    python -m pytest -v -p no:cacheprovider "$@"

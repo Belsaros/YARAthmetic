@@ -30,6 +30,30 @@ Shorter P2PKH addresses, additional leading zero bytes, P2SH, WIF, extended keys
 and other Base58 alphabets are outside this prototype's coverage. A valid address
 checksum also does not demonstrate ownership or activity.
 
+All Base58 generation modes accept `--output_version`, including the
+parameterized mode described below. See [compatibility](COMPATABILITY.md).
+
+## Runtime candidate selection
+
+`generate_base58check_p2pkh_parameterized_rule()` generates a separate circuit
+whose regex occurrence is selected by the external integer `candidate_index`.
+Compile once, then choose a different occurrence for each scan:
+
+```sh
+PYTHONPATH=src python3 tools/generate-base58 --kind p2pkh-checksum-parameterized --output /tmp/base58check-runtime.yar
+yarac -d candidate_index=1 /tmp/base58check-runtime.yar /tmp/base58check-runtime.yarc
+yara -C -d candidate_index=2 /tmp/base58check-runtime.yarc sample.txt
+```
+
+Runtime selection requires YARA 3.5 or later; use fixed-slot generation on 3.4.
+Define the external as an integer at compilation. If omitted at scan time, its
+compiled default applies. Nonpositive indices and indices beyond the candidate
+count do not match. Unlike the fixed generator, runtime selection has no
+sixteen-slot limit. It still checks only one occurrence per scan, counts embedded
+and checksum-invalid regex matches, and has the same address-shape and boundary
+restrictions. It requires an external variable; the existing fixed-slot API and
+CLI mode remain self-contained and unchanged.
+
 ## Why Boolean rules work
 
 Base58 decoding can be expressed as a weighted sum of character values. The
@@ -45,7 +69,8 @@ and subsequent rules reference that result. Binary addition, rotations, message
 expansion, and all 128 rounds of double SHA-256 use that shared circuit.
 
 The tradeoff is that a rule cannot accept a candidate offset as a parameter.
-Every circuit's inputs therefore reference a fixed regex occurrence. General
+The original circuit's inputs therefore reference a fixed regex occurrence; the
+parameterized version uses one external index shared by all inputs. General
 candidate iteration is the next design problem, along with circuit size and
 throughput.
 

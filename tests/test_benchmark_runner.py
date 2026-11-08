@@ -1,3 +1,5 @@
+from yara_support import OUTPUT_VERSION
+
 import json
 import subprocess
 from yarithmetic.benchmark.runner import (
@@ -16,6 +18,7 @@ def test_benchmark_workspace(tmp_path):
     workspace = prepare_workspace(
         tmp_path / "workspace",
         seed=12345,
+        output_version=OUTPUT_VERSION,
         shapes=[(8, 1)],
     )
 
@@ -262,6 +265,7 @@ def test_prepare_workspace_creates_expected_paths(tmp_path):
     workspace = prepare_workspace(
         tmp_path,
         seed=12345,
+        output_version=OUTPUT_VERSION,
         shapes=[(8, 1)],
     )
 

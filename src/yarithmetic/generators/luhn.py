@@ -1,3 +1,6 @@
+from yarithmetic.generators.compatibility import parse_output_version, repeat_atom
+
+
 def generate_checksum(candidate: str, digit_offsets: list[int]) -> str:
     parity = len(digit_offsets) % 2
     terms = []
@@ -14,9 +17,10 @@ def generate_checksum(candidate: str, digit_offsets: list[int]) -> str:
 
     return " +\n                ".join(terms)
 
-def generate_digit_boundaries(candidate: str) -> str:
+def generate_digit_boundaries(candidate: str, length=None) -> str:
     offset = f"@{candidate}[i]"
-    end = f"@{candidate}[i] + !{candidate}[i]"
+    candidate_length = str(length) if length is not None else f"!{candidate}[i]"
+    end = f"@{candidate}[i] + {candidate_length}"
 
     return f"""\
 (
@@ -31,8 +35,8 @@ def generate_digit_boundaries(candidate: str) -> str:
                     uint8({end}) > 57
                 )"""
 
-def generate_formatted_regex(groups: list[int]) -> str:
-    parts = [f"[0-9]{{{size}}}" for size in groups]
+def generate_formatted_regex(groups: list[int], output_version=None) -> str:
+    parts = [repeat_atom("[0-9]", size, size, output_version) for size in groups]
     return "[ -]".join(parts)
 
 
@@ -50,15 +54,20 @@ def generate_digit_offsets(groups: list[int]) -> list[int]:
 
     return offsets
 
-def generate_luhn_rule(length: int) -> str:
-    compact_boundaries = generate_digit_boundaries("compact")
+def generate_luhn_rule(length: int, *, output_version=None) -> str:
+    """Generate Luhn validation, optionally targeting a classic YARA release."""
+    version = parse_output_version(output_version)
+    fixed_lengths = version is not None and version < (3, 5, 0)
+    compact_boundaries = generate_digit_boundaries(
+        "compact", length if fixed_lengths else None,
+    )
     compact_checksum = generate_checksum(
         "compact",
         list(range(length)),
     )
 
     strings = [
-        f"        $compact = /[0-9]{{{length}}}/"
+        f"        $compact = /{repeat_atom('[0-9]', length, length, output_version)}/"
     ]
 
     conditions = [
@@ -82,9 +91,11 @@ def generate_luhn_rule(length: int) -> str:
     if length in layouts:
         groups = layouts[length]
 
-        formatted_regex = generate_formatted_regex(groups)
+        formatted_regex = generate_formatted_regex(groups, output_version)
         formatted_offsets = generate_digit_offsets(groups)
-        formatted_boundaries = generate_digit_boundaries("formatted")
+        formatted_boundaries = generate_digit_boundaries(
+            "formatted", length + len(groups) - 1 if fixed_lengths else None,
+        )
         
         formatted_checksum = generate_checksum(
             "formatted",

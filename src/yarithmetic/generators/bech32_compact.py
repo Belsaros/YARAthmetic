@@ -10,6 +10,8 @@ data. Both use fixed coefficient distances, gated by runtime positions. Two
 small transition tables apply T**h without exceeding four nested YARA loops.
 """
 
+from yarithmetic.generators.compatibility import repeat_atom, require_match_lengths
+
 from yarithmetic.generators.bech32 import (
     generate_charset_bit,
     generate_hrp_high_value,
@@ -95,7 +97,8 @@ def generate_fixed_inputs(offset, length, hrp):
     return "(" + " ^ ".join(high) + ")", "(" + " ^ ".join(rest) + ")"
 
 
-def generate_compact_bech32_rule(shapes=None):
+def generate_compact_bech32_rule(shapes=None, *, output_version=None):
+    require_match_lengths(output_version)
     if shapes is not None:
         shapes = sorted(set(shapes))
         if any(not 8 <= n <= 90 or not 1 <= h <= n - 7 for n, h in shapes):
@@ -121,7 +124,7 @@ def generate_compact_bech32_rule(shapes=None):
 rule Bech32_Candidate
 {{
     strings:
-        $candidate = /[!-~]+1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{{6,}}/ nocase
+        $candidate = /[!-~]+1{repeat_atom("[qpzry9x8gf2tvdw0s3jn54khce6mua7l]", 6, None, output_version)}/ nocase
     condition:
         #candidate > 0 and
         for any i in (1..#candidate) : (

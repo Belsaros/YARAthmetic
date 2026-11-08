@@ -1,3 +1,5 @@
+from yara_support import OUTPUT_VERSION
+
 import json
 import pytest
 import os
@@ -28,7 +30,7 @@ def load_vectors():
         return json.load(fh)["vectors"]
 
 def run_generated_rule(tmp_path, sample_path, length=16):
-    rule_source = generate_luhn_rule(length)
+    rule_source = generate_luhn_rule(length, output_version=OUTPUT_VERSION)
 
     rule_path = tmp_path / f"luhn{length}.yar"
     rule_path.write_text(rule_source, encoding="utf-8")
@@ -50,7 +52,7 @@ def test_generated_luhn_rules_compile(tmp_path):
     for length in (14, 15, 16, 19):
         rule_path = tmp_path / f"luhn{length}.yar"
         rule_path.write_text(
-            generate_luhn_rule(length),
+            generate_luhn_rule(length, output_version=OUTPUT_VERSION),
             encoding="utf-8",
         )
 
@@ -90,7 +92,8 @@ def test_generated_luhn_rules_match_vectors(tmp_path, load_vectors):
         value = vector["value"]
         length = len(value)
 
-        rule_path = ROOT / "generated" / f"luhn{length}.yar"
+        rule_path = tmp_path / f"luhn{length}.yar"
+        rule_path.write_text(generate_luhn_rule(length, output_version=OUTPUT_VERSION))
         rule_name = f"Valid_Luhn_{length}"
 
         sample_path = tmp_path / "candidate.txt"

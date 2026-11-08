@@ -1,3 +1,5 @@
+from yara_support import OUTPUT_VERSION
+
 import random
 import subprocess
 
@@ -66,7 +68,7 @@ def test_all_decoded_words_against_reference(tmp_path, length):
     ("0" + "z" * 26 + "\n" + "z" * 26, True),
 ])
 def test_candidate_boundaries_and_lengths(tmp_path, value, expected):
-    assert run_rule(tmp_path, generate_base58_candidate_rule(), value.encode()) == expected
+    assert run_rule(tmp_path, generate_base58_candidate_rule(output_version=OUTPUT_VERSION), value.encode()) == expected
 
 
 @pytest.mark.parametrize("length,word", [(0, 0), (129, 0), (34, -1), (34, 7)])

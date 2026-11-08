@@ -1,7 +1,8 @@
 """Experimental SHA-256 Boolean circuit expressed as private YARA rules.
 
 Rules are reusable gates, avoiding recursive inlining of SHA-256 state. They
-evaluate once per scanned file, so inputs must refer to a fixed candidate slot.
+evaluate once per scanned file, so inputs must refer to one candidate slot
+selected consistently across the circuit.
 Words and bytes below store bits least-significant first.
 
 Algorithm and constants: NIST FIPS 180-4, sections 4.1.2, 4.2.2, 5 and 6.2.
